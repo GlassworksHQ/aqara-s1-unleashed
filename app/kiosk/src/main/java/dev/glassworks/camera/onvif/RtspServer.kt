@@ -6,7 +6,9 @@
  * Changes: package; with no credentials, or a username without a password, every request is refused
  * (upstream let everyone in), so the stream has no default password; start() binds before it counts as
  * running, so a port clash can be retried; client counts are reported in order from one thread; stop()
- * copies its connection and session sets without racing a connection that ends. */
+ * copies its connection and session sets without racing a connection that ends; the panel's name in
+ * place of "AndroidIPCamera"; at most 16 connections, a 30 s read timeout until a session plays, and
+ * 30 s in all to sign in. */
 
 package dev.glassworks.camera.onvif
 
@@ -39,15 +41,24 @@ class RtspServer(
     private val port: Int = 8554,
     private val credentials: () -> Pair<String, String>?,
     private val onClientsChanged: (activeCount: Int) -> Unit,
-    private val onLog: (String) -> Unit = {}
+    private val onLog: (String) -> Unit = {},
+    /** Glassworks: the panel's name, for the auth realm, the Server header, SDP and RTCP (upstream: "AndroidIPCamera"). */
+    private val name: String = "Glassworks",
+    /** Glassworks: connections at once; more are closed at accept. */
+    private val maxConnections: Int = MAX_CONNECTIONS,
+    /** Glassworks: how long a connection may wait between requests before a session plays. */
+    private val handshakeTimeoutMs: Int = HANDSHAKE_TIMEOUT_MS,
+    /** Glassworks: the stream's frame rate for SDP's `a=framerate`, or 0 to leave it out. */
+    private val fps: Int = 0,
 ) {
     private val running = AtomicBoolean(false)
-    private var serverSocket: ServerSocket? = null
+    @Volatile private var serverSocket: ServerSocket? = null
     private var rtpSocket: DatagramSocket? = null
     private var rtcpSocket: DatagramSocket? = null
     private val connections = ConcurrentHashMap.newKeySet<Connection>()
     private val sessions = ConcurrentHashMap<String, Session>()
-    private val auth = RtspAuth()
+    private val auth = RtspAuth(name.replace("\"", ""))
+    private val cname = name.lowercase().filter { it.isLetterOrDigit() }.ifEmpty { "glassworks" }
     private val random = SecureRandom()
     private val clock0 = System.nanoTime()
     private val sessionVersion = System.currentTimeMillis() / 1000
@@ -93,9 +104,6 @@ class RtspServer(
         paramLock.lock(); try { paramsReady.signalAll() } finally { paramLock.unlock() }
         reportClients()
     }
-
-    /** Port actually bound (useful when constructed with port 0 in tests). */
-    val boundPort: Int get() = serverSocket?.localPort ?: port
 
     fun hasClients(): Boolean = activeCount() > 0
 
@@ -146,9 +154,17 @@ class RtspServer(
     private fun acceptLoop(ss: ServerSocket) {
         while (running.get()) {
             val sock = try { ss.accept() } catch (_: Exception) { break }
+            // Glassworks: a cap on connections, and a read timeout until a session plays, so idle or
+            // slow peers can't hold sockets and threads before signing in.
+            if (connections.size >= maxConnections) {
+                onLog("RTSP: connection from ${sock.inetAddress.hostAddress} refused, $maxConnections already open")
+                try { sock.close() } catch (_: Exception) {}
+                continue
+            }
             try {
                 sock.tcpNoDelay = true
                 sock.keepAlive = true
+                sock.soTimeout = handshakeTimeoutMs
                 val c = Connection(sock)
                 connections += c
                 thread("RtspConn-${sock.inetAddress.hostAddress}") { c.run() }
@@ -168,8 +184,14 @@ class RtspServer(
 
     private fun reaperLoop() {
         while (running.get()) {
-            try { Thread.sleep(5000) } catch (_: InterruptedException) { break }
+            try { Thread.sleep(minOf(5_000L, handshakeTimeoutMs.toLong())) } catch (_: InterruptedException) { break }
             val now = System.currentTimeMillis()
+            // Glassworks: an unsigned connection past its deadline is closed here too, whatever its
+            // reader is doing (the reader skips stray line breaks without returning).
+            for (c in ArrayList(connections)) if (c.overdue(now)) {
+                onLog("RTSP: ${c.socket.inetAddress.hostAddress} didn't sign in in time")
+                c.close()
+            }
             for (s in sessions.values) {
                 // TCP sessions live as long as their connection; UDP ones need keepalives.
                 if (!s.tcp && now - s.lastActivity > SESSION_TIMEOUT_S * 1000L) {
@@ -262,7 +284,7 @@ class RtspServer(
                     val nowMs = System.currentTimeMillis()
                     if (nowMs - lastSrMs >= SR_INTERVAL_MS) {
                         lastSrMs = nowMs
-                        val sr = RtpH264Packetizer.rtcpSenderReport(ssrc, nowMs, currentTimestamp(), packetCount, octetCount)
+                        val sr = RtpH264Packetizer.rtcpSenderReport(ssrc, nowMs, currentTimestamp(), packetCount, octetCount, cname)
                         if (tcp) connection.writeInterleaved(rtcpChannel, sr) else sendUdpRtcp(sr)
                     }
                 } catch (e: Exception) {
@@ -296,6 +318,12 @@ class RtspServer(
 
     private inner class Connection(val socket: Socket) {
         private val out: OutputStream = socket.getOutputStream()
+        // Glassworks: until it signs in, a connection gets handshakeTimeoutMs in all, so OPTIONS (which
+        // skips sign-in) can't keep a slot forever.
+        private val connectedAt = System.currentTimeMillis()
+        @Volatile private var signedIn = false
+
+        fun overdue(now: Long) = !signedIn && now - connectedAt > handshakeTimeoutMs
         private val writeLock = Any()
         private val mySessions = mutableSetOf<String>()
 
@@ -322,7 +350,13 @@ class RtspServer(
             val reader = RtspRequestReader(socket.getInputStream())
             try {
                 while (running.get()) {
-                    when (val item = reader.next() ?: break) {
+                    val item = reader.next() ?: break
+                    // Every item counts, interleaved frames too: nothing keeps an unsigned connection past it.
+                    if (!signedIn && System.currentTimeMillis() - connectedAt > handshakeTimeoutMs) {
+                        onLog("RTSP: ${socket.inetAddress.hostAddress} didn't sign in in time")
+                        break
+                    }
+                    when (item) {
                         is RtspRequestReader.Item.Interleaved -> touchAll()  // RTCP RR over TCP
                         is RtspRequestReader.Item.Malformed -> respond(null, 400, "Bad Request")
                         is RtspRequestReader.Item.Request -> handle(item.request)
@@ -344,7 +378,7 @@ class RtspServer(
             val sb = StringBuilder("RTSP/1.0 $code $reason\r\n")
             req?.cseq?.let { sb.append("CSeq: $it\r\n") }
             sb.append("Date: ${httpDate()}\r\n")
-            sb.append("Server: AndroidIPCamera\r\n")
+            sb.append("Server: ${name.replace(Regex("[\r\n]"), " ")}\r\n")
             headers.forEach { sb.append(it).append("\r\n") }
             val bytes = body?.toByteArray(Charsets.UTF_8)
             if (bytes != null) {
@@ -381,6 +415,7 @@ class RtspServer(
             if (req.method != "OPTIONS" && !authorized(req)) {
                 return respond(req, 401, "Unauthorized", auth.challengeHeaders())
             }
+            if (req.method != "OPTIONS") signedIn = true
             when (req.method) {
                 "OPTIONS" -> respond(req, 200, "OK", listOf("Public: OPTIONS, DESCRIBE, SETUP, PLAY, PAUSE, TEARDOWN, GET_PARAMETER, SET_PARAMETER"))
                 "DESCRIBE" -> describe(req)
@@ -435,7 +470,7 @@ class RtspServer(
                 if (sps == null || pps == null) onLog("RTSP DESCRIBE: no SPS/PPS yet, sending SDP without sprop-parameter-sets")
             }
             val host = socket.localAddress.hostAddress ?: "0.0.0.0"
-            val sdp = RtspSdp.build(sps, pps, host, sessionVersion)
+            val sdp = RtspSdp.build(sps, pps, host, sessionVersion, name, fps)
             respond(req, 200, "OK", listOf("Content-Base: ${baseUrl(req)}"), sdp, "application/sdp")
         }
 
@@ -464,6 +499,8 @@ class RtspServer(
                 "RTP-Info: url=$url;seq=${s.seq};rtptime=$ts"
             ))
             s.play()
+            // A playing client may send nothing for minutes (TCP clients often skip RTCP): no timeout now.
+            try { socket.soTimeout = 0 } catch (_: Exception) {}
             reportClients()
             onLog("RTSP session ${s.id} playing (${if (s.tcp) "TCP" else "UDP"}) for ${socket.inetAddress.hostAddress}")
         }
@@ -501,6 +538,8 @@ class RtspServer(
 
     companion object {
         const val SESSION_TIMEOUT_S = 60
+        const val MAX_CONNECTIONS = 16
+        const val HANDSHAKE_TIMEOUT_MS = 30_000
         private const val QUEUE_CAPACITY = 90
         private const val SR_INTERVAL_MS = 2_000L
         private const val DESCRIBE_WAIT_MS = 6000L

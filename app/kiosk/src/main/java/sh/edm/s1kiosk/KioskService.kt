@@ -131,6 +131,8 @@ class KioskService : Service() {
         val types = foreground.promote(
             micGranted = granted(Manifest.permission.RECORD_AUDIO),
             locationGranted = granted(Manifest.permission.ACCESS_FINE_LOCATION) || granted(Manifest.permission.ACCESS_COARSE_LOCATION),
+            // Only on a device with a camera: the S1 has none, and its service stays as it was.
+            cameraGranted = granted(Manifest.permission.CAMERA) && packageManager.hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY),
         )
         if (types != before) {
             Log.i("S1Kiosk", "foreground service types $types (${KioskForeground.names(types)}; location ${if (types and KioskForeground.LOCATION != 0) "on" else "off"})")

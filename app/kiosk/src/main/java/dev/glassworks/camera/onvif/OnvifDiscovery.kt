@@ -93,8 +93,7 @@ internal class OnvifDiscovery(
                     soTimeout = 2000
                     timeToLive = 4
                 }
-                // Glassworks: closed here if joining fails, before the loop's finally can see it.
-                try { (join ?: ::joinAll)(s, group) } catch (e: Exception) { s.close(); throw e }
+                (join ?: ::joinAll)(s, group) // a failed join leaves `own` for the finally to close
                 socket = s
                 onLog("ONVIF WS-Discovery listening on udp/$port")
                 try { sendMulticast(buildAnnounce(bye = false)) } catch (_: Exception) {}

@@ -19,6 +19,9 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <!-- KioskService's type when neither of the two above is granted: Android 14 refuses a service without a type. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    <!-- The camera pane (#117): presence with the screen off, and ONVIF discovery (multicast). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- App updates without the boot image's root update service (update/UpdateManager.kt): a
          PackageInstaller session, confirmed on the panel's screen. -->
@@ -111,7 +114,7 @@
         <service
             android:name=".KioskService"
             android:exported="false"
-            android:foregroundServiceType="microphone|location|connectedDevice" />
+            android:foregroundServiceType="microphone|location|connectedDevice|camera" />
 
         <!-- Optional device admin (force-lock only) to switch the screen off instantly. -->
         <receiver
@@ -130,6 +133,16 @@
              WRITE_SECURE_SETTINGS: adb shell holds it, normal apps can't. -->
         <activity
             android:name=".improv.ImprovActivity"
+            android:exported="true"
+            android:permission="android.permission.WRITE_SECURE_SETTINGS"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:theme="@android:style/Theme.NoDisplay" />
+
+        <!-- The camera pane's settings from adb (CameraAdbActivity). WRITE_SECURE_SETTINGS: adb shell
+             holds it, normal apps can't. -->
+        <activity
+            android:name=".CameraAdbActivity"
             android:exported="true"
             android:permission="android.permission.WRITE_SECURE_SETTINGS"
             android:excludeFromRecents="true"

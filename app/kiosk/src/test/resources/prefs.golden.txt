@@ -10,6 +10,12 @@ kiosk|base_layout|String|""
 kiosk|base_transport|String|""
 kiosk|block_aqara_cloud|Boolean|true
 kiosk|bluetooth_proxy_enabled|Boolean|false
+kiosk|camera_enabled|Boolean|false
+kiosk|camera_privacy|Boolean|false
+kiosk|camera_sensitivity|Int|5
+kiosk|camera_stream_password|String|null
+kiosk|camera_stream_user|String|null
+kiosk|camera_use|String|null
 kiosk|dashboards|String|""
 kiosk|device_mac|String|""
 kiosk|diagnostics_enabled|Boolean|true
@@ -29,6 +35,7 @@ kiosk|min_brightness|Float|0.1
 kiosk|night_idle_off_sec|Int|20
 kiosk|night_max_brightness|Float|0.2
 kiosk|night_window|String|"22:00-07:00"
+kiosk|onvif_stream|Boolean|false
 kiosk|presence_range_m|Float|0.0
 kiosk|radio_allow|String|""
 kiosk|radio_ha_ipv4|String|null

@@ -154,10 +154,10 @@ class RtspServerTest {
         val (r401, _) = c.request("DESCRIBE", url)
         assertTrue(r401.startsWith("RTSP/1.0 401"))
         val nonce = Regex("nonce=\"([0-9a-f]+)\"").find(r401)!!.groupValues[1]
-        val ha1 = RtspAuth.md5Hex("admin:AndroidIPCamera:pw")
+        val ha1 = RtspAuth.md5Hex("admin:Glassworks:pw")
         val resp = RtspAuth.md5Hex("$ha1:$nonce:${RtspAuth.md5Hex("DESCRIBE:$url")}")
         val (ok, _) = c.request("DESCRIBE", url, listOf(
-            "Authorization: Digest username=\"admin\", realm=\"AndroidIPCamera\", nonce=\"$nonce\", uri=\"$url\", response=\"$resp\""))
+            "Authorization: Digest username=\"admin\", realm=\"Glassworks\", nonce=\"$nonce\", uri=\"$url\", response=\"$resp\""))
         assertTrue(ok, ok.startsWith("RTSP/1.0 200"))
         c.sock.close()
     }
@@ -215,6 +215,7 @@ class RtspServerTest {
         val squatter = ServerSocket(port)
         assertTrue(runCatching { server.start() }.isFailure)
         squatter.close()
+        assertTrue(bindsWithin(port))
         server.start()
         val c = Client(port)
         assertTrue(c.request("OPTIONS", "rtsp://127.0.0.1:$port/live").first.startsWith("RTSP/1.0 200"))
@@ -252,14 +253,127 @@ class RtspServerTest {
         a.sock.close(); b.sock.close()
     }
 
+    private fun playOn(c: Client): Pair<String, String> {
+        val url = "rtsp://127.0.0.1:$port/live"
+        val (_, sdp) = c.request("DESCRIBE", url, listOf("Accept: application/sdp"))
+        val setup = c.request("SETUP", "$url/trackID=0", listOf("Transport: RTP/AVP/TCP;unicast;interleaved=0-1")).first
+        val session = Regex("Session: ([0-9A-F]+)").find(setup)!!.groupValues[1]
+        return c.request("PLAY", url, listOf("Session: $session")).first to sdp
+    }
+
+    @Test fun connectionsOverTheCapAreClosedAtOnce() {
+        port = freePort()
+        server = RtspServer(port, { USER }, { counts += it }, maxConnections = 2)
+        server.start()
+        val a = Client(port); val b = Client(port)
+        assertTrue(a.request("OPTIONS", "rtsp://127.0.0.1:$port/live").first.startsWith("RTSP/1.0 200"))
+        assertTrue(b.request("OPTIONS", "rtsp://127.0.0.1:$port/live").first.startsWith("RTSP/1.0 200"))
+        val third = Socket("127.0.0.1", port).apply { soTimeout = 3000 }
+        assertEquals("closed without a word", -1, third.getInputStream().read())
+        a.sock.close(); b.sock.close(); third.close()
+    }
+
+    @Test fun aSilentConnectionIsClosedButAPlayingOneIsNot() {
+        port = freePort()
+        server = RtspServer(port, { USER }, { counts += it }, handshakeTimeoutMs = 300)
+        server.start()
+        Thread { var i = 0; while (feeding.get()) { server.onAccessUnit(if (i++ % 10 == 0) idr else pFrame, i % 10 == 1); Thread.sleep(33) } }
+            .apply { isDaemon = true; start() }
+        Thread.sleep(150)
+        val idle = Socket("127.0.0.1", port).apply { soTimeout = 3000 }
+        assertEquals("nothing sent: closed after the handshake timeout", -1, idle.getInputStream().read())
+        idle.close()
+        val c = Client(port)
+        val play = playOn(c).first
+        assertTrue(play.startsWith("RTSP/1.0 200"))
+        val session = Regex("Session: ([0-9A-F]+)").find(play)!!.groupValues[1]
+        Thread.sleep(900) // three timeouts long, sending nothing
+        // Still open: a request now gets an answer (the reader skips the RTP in between).
+        val (alive, _) = c.request("GET_PARAMETER", "rtsp://127.0.0.1:$port/live", listOf("Session: $session"))
+        assertTrue(alive, alive.startsWith("RTSP/1.0 200"))
+        c.sock.close()
+    }
+
+    @Test fun optionsCantKeepAConnectionOpenWithoutSigningIn() {
+        port = freePort()
+        server = RtspServer(port, { USER }, { counts += it }, handshakeTimeoutMs = 400)
+        server.start()
+        val c = Client(port, auth = null)
+        val url = "rtsp://127.0.0.1:$port/live"
+        val closed = runCatching { repeat(20) { c.request("OPTIONS", url); Thread.sleep(100) } }.isFailure
+        assertTrue("closed within the handshake time although OPTIONS kept coming", closed)
+        c.sock.close()
+    }
+
+    /** Sends [bytes] every 100 ms for 3 s; true if the server closed the connection meanwhile (a write failed). */
+    private fun closedWhileSending(bytes: ByteArray): Boolean {
+        val sock = Socket("127.0.0.1", port)
+        val out = sock.getOutputStream()
+        val closed = runCatching { repeat(30) { out.write(bytes); out.flush(); Thread.sleep(100) } }.isFailure
+        sock.close()
+        return closed
+    }
+
+    @Test fun interleavedFramesCantKeepAConnectionOpenWithoutSigningIn() {
+        port = freePort()
+        server = RtspServer(port, { USER }, { counts += it }, handshakeTimeoutMs = 400)
+        server.start()
+        // Kept busy the whole time, so the read timeout never fires: only the deadline can close it.
+        assertTrue(closedWhileSending(byteArrayOf('$'.code.toByte(), 1, 0, 4, 0x80.toByte(), 201.toByte(), 0, 1)))
+    }
+
+    @Test fun strayLineBreaksCantKeepAConnectionOpenWithoutSigningIn() {
+        port = freePort()
+        server = RtspServer(port, { USER }, { counts += it }, handshakeTimeoutMs = 400)
+        server.start()
+        // The reader skips these without returning: the reaper has to close it.
+        assertTrue(closedWhileSending(byteArrayOf('\r'.code.toByte())))
+    }
+
+    @Test fun theSdpCarriesTheFrameRateWhenKnown() {
+        port = freePort()
+        server = RtspServer(port, { USER }, { counts += it }, fps = 15)
+        server.start()
+        server.onAccessUnit(idr, true)
+        val (_, sdp) = Client(port).request("DESCRIBE", "rtsp://127.0.0.1:$port/live", listOf("Accept: application/sdp"))
+        assertTrue(sdp, sdp.contains("a=framerate:15\r\n"))
+        assertTrue(!RtspSdp.build(null, null, "192.0.2.41", 1).contains("a=framerate"))
+    }
+
+    @Test fun theStreamCarriesThePanelsName() {
+        port = freePort()
+        server = RtspServer(port, { USER }, { counts += it }, name = "Hall Panel")
+        server.start()
+        server.onAccessUnit(idr, true)
+        val c = Client(port, auth = null)
+        val url = "rtsp://127.0.0.1:$port/live"
+        val (r401, _) = c.request("DESCRIBE", url)
+        assertTrue(r401.contains("realm=\"Hall Panel\""))
+        assertTrue(r401.contains("Server: Hall Panel"))
+        val (_, sdp) = Client(port).request("DESCRIBE", url, listOf("Accept: application/sdp"))
+        assertTrue(sdp.contains("s=Hall Panel"))
+        assertTrue(!sdp.contains("Android") && !r401.contains("Android"))
+        c.sock.close()
+    }
+
     @Test fun nothingListensUntilStart() {
         port = freePort()
         server = RtspServer(port, { USER }, { counts += it })
-        ServerSocket(port).close() // free: the constructor opened nothing
+        assertTrue("free: the constructor opened nothing", bindsWithin(port))
         server.start()
-        assertTrue(runCatching { ServerSocket(port).close() }.isFailure)
+        assertTrue("taken while it runs", runCatching { ServerSocket(port).close() }.isFailure)
         server.stop()
-        ServerSocket(port).close() // and stop() let it go
+        assertTrue("and stop() let it go", bindsWithin(port))
+    }
+
+    /** Binds [port] and lets it go, retrying until [deadlineMs]: a just-closed socket can take a moment to free on a busy machine. */
+    private fun bindsWithin(port: Int, deadlineMs: Long = 5_000): Boolean {
+        val until = System.currentTimeMillis() + deadlineMs
+        while (true) {
+            val ok = runCatching { java.net.ServerSocket(port).close() }.isSuccess
+            if (ok || System.currentTimeMillis() > until) return ok
+            Thread.sleep(50)
+        }
     }
 
     private fun waitFor(ms: Long = 3_000, ok: () -> Boolean): Boolean {

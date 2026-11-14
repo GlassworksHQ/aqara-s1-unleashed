@@ -77,6 +77,7 @@ internal object OnvifXml {
                 "http://apache.org/xml/features/nonvalidating/load-external-dtd" to false,
             )) try { f.setFeature(feature, on) } catch (_: Exception) {}
             val b = f.newDocumentBuilder()
+            // Unreachable behind the DTD check above; kept as a second guard in case that check changes.
             b.setEntityResolver { _, _ -> throw org.xml.sax.SAXException("entities are refused") }
             b.parse(ByteArrayInputStream(xml.toByteArray(Charsets.UTF_8)))
         } catch (_: Exception) { null }

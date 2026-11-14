@@ -398,6 +398,7 @@ The default is on for the S1's panes, as before the switch.
 | Time zone (`time-zone`) | `time_zone_enabled` | `keep_time_zone` | no |
 | Diagnostics (`diagnostics`) | `diagnostics_enabled` | `diagnostics` | no |
 | Bluetooth proxy (`bluetooth-proxy`) | `bluetooth_proxy_enabled` (off by default) | `bluetooth_proxy` | yes, unless the panel has no Bluetooth LE |
+| Camera (`camera`) | `camera_enabled` (off by default) | `camera_pane` | no; on a panel without a camera its page says it can't run |
 
 The radio has no `PaneSwitch`: its on/off is its mode (`Off`), and its card and settings switch are
 its own. Timers have none either: they come only from voice.

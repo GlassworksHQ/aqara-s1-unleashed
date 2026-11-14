@@ -1,20 +1,18 @@
 package sh.edm.s1kiosk
 
-import sh.edm.s1kiosk.frame.AqaraCloud
-import sh.edm.s1kiosk.frame.AqaraS1Plus
-import sh.edm.s1kiosk.frame.TimeZonePrefs
+import android.app.Application
+import android.content.SharedPreferences
 import dev.glassworks.bluetoothproxy.BluetoothProxyPane
 import dev.glassworks.bluetoothproxy.BluetoothProxyPrefs
 import dev.glassworks.bluetoothproxy.ProxyRadio
-import sh.edm.bluetoothproxy.BleScanner
-import sh.edm.bluetoothproxy.ScanFailure
-import sh.edm.bluetoothproxy.ScanPower
+import dev.glassworks.camera.CameraPrefs
 import dev.glassworks.diagnostics.DiagnosticsPrefs
-import android.app.Application
-import android.content.SharedPreferences
 import dev.glassworks.pane.Pane
 import dev.glassworks.pane.PaneContext
 import dev.glassworks.pane.PanelEvent
+import java.io.File
+import java.lang.reflect.Proxy
+import java.util.concurrent.Executors
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
@@ -24,6 +22,9 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
+import sh.edm.bluetoothproxy.BleScanner
+import sh.edm.bluetoothproxy.ScanFailure
+import sh.edm.bluetoothproxy.ScanPower
 import sh.edm.esphome.DeviceIdentity
 import sh.edm.esphome.NumberEntity
 import sh.edm.esphome.ProtoMessage
@@ -34,6 +35,9 @@ import sh.edm.s1kiosk.base.WallBase
 import sh.edm.s1kiosk.base.WallBasePane
 import sh.edm.s1kiosk.base.WallBasePrefs
 import sh.edm.s1kiosk.esphome.UrlPlayer
+import sh.edm.s1kiosk.frame.AqaraCloud
+import sh.edm.s1kiosk.frame.AqaraS1Plus
+import sh.edm.s1kiosk.frame.TimeZonePrefs
 import sh.edm.s1kiosk.radio.RadioPane
 import sh.edm.s1kiosk.radio.RadioPrefs
 import sh.edm.s1kiosk.sendspin.SendspinPane
@@ -42,9 +46,6 @@ import sh.edm.s1kiosk.timers.TimersPane
 import sh.edm.s1kiosk.voice.AssistPane
 import sh.edm.s1kiosk.voice.SpeakerMedia
 import sh.edm.s1kiosk.voice.VoicePrefs
-import java.io.File
-import java.lang.reflect.Proxy
-import java.util.concurrent.Executors
 
 /**
  * Each pane reaches its settings only through `PaneContext.prefs(its id)` and its own prefs class,
@@ -61,7 +62,7 @@ class PanePrefsTest {
     /** The prefs class of each namespace, built over a file. */
     private val owners: Map<String, (SharedPreferences) -> Any> = mapOf(
         "sendspin" to ::SendspinPrefs, "assist" to ::VoicePrefs, "wall-base" to ::WallBasePrefs, "radio" to ::RadioPrefs,
-        "time-zone" to ::TimeZonePrefs, "diagnostics" to ::DiagnosticsPrefs, "bluetooth-proxy" to ::BluetoothProxyPrefs,
+        "time-zone" to ::TimeZonePrefs, "diagnostics" to ::DiagnosticsPrefs, "bluetooth-proxy" to ::BluetoothProxyPrefs, "camera" to { sp -> CameraPrefs(sp) },
     )
 
     @After fun tearDown() {

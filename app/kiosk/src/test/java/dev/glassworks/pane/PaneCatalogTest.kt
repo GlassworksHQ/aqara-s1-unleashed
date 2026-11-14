@@ -73,15 +73,22 @@ class PaneCatalogTest {
             .toList()
     }
 
-    /** The id in [c]'s source file: the one `override val id = "…"` of the file that declares it. */
+    /**
+     * The id in [c]'s source file: the one `override val id = …` of the file that declares it, a literal
+     * or the file's own `const val ID = "…"` (CameraPane: `override val id = ID`, #117).
+     */
     private fun idOf(c: Class<*>): String {
         val simple = c.name.substringAfterLast('.').substringAfterLast('$')
         val dir = File(main, c.name.substringBeforeLast('.').replace('.', File.separatorChar))
         val file = dir.listFiles().orEmpty().filter { it.extension == "kt" }.singleOrNull { Regex("""\bclass\s+$simple\b""").containsMatchIn(it.readText()) }
             ?: error("${c.name}: no single source file in $dir declares it")
-        val ids = Regex("""override val id = "([^"]+)"""").findAll(file.readText()).map { it.groupValues[1] }.toList()
-        assertEquals("${file.name}: one `override val id` per Pane file", 1, ids.size)
-        return ids.single()
+        val text = file.readText()
+        val refs = Regex("""override val id = ([^\n/]+)""").findAll(text).map { it.groupValues[1].trim() }.toList()
+        assertEquals("${file.name}: one `override val id` per Pane file", 1, refs.size)
+        val ref = refs.single()
+        Regex(""""([^"]+)"""").matchEntire(ref)?.let { return it.groupValues[1] }
+        assertTrue("${file.name}: a pane id this scan can't read: $ref", ref == "ID" || ref == "$simple.ID")
+        return Regex("""const val ID = "([^"]+)"""").find(text)?.groupValues?.get(1) ?: error("${file.name}: `$ref` without a const val ID")
     }
 
     private fun rel(f: File) = f.relativeTo(repo).path
@@ -89,8 +96,8 @@ class PaneCatalogTest {
     @Test
     fun theScanFindsTheKnownPanes() {
         // the scans must keep working: if a refactor hides the panes from them, this fails before the real checks pass vacuously
-        assertTrue(paneClassIds.toString(), paneClassIds.containsAll(listOf("assist", "timers", "sendspin", "radio", "wall-base", "time-zone", "diagnostics", "bluetooth-proxy")))
-        assertTrue(definitionIds.toString(), definitionIds.containsAll(listOf("assist", "sendspin", "radio", "wall-base", "time-zone", "diagnostics", "bluetooth-proxy")))
+        assertTrue(paneClassIds.toString(), paneClassIds.containsAll(listOf("assist", "timers", "sendspin", "radio", "wall-base", "time-zone", "diagnostics", "bluetooth-proxy", "camera")))
+        assertTrue(definitionIds.toString(), definitionIds.containsAll(listOf("assist", "sendspin", "radio", "wall-base", "time-zone", "diagnostics", "bluetooth-proxy", "camera")))
     }
 
     @Test

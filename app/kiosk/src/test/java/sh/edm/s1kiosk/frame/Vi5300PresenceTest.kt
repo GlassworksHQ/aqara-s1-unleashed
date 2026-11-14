@@ -2,6 +2,8 @@ package sh.edm.s1kiosk.frame
 
 import android.app.Application
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Assert.assertFalse
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -28,5 +30,11 @@ class Vi5300PresenceTest {
         var writes = 0
         assertEquals(null, Vi5300Presence { _, _, _ -> writes++; true }.setRange(app, 0f))
         assertEquals(0, writes)
+    }
+
+    @Test fun onlyTheS1sOwnSensorCounts() {
+        assertTrue(Vi5300Presence.isVi5300("vi5300 Proximity Sensor"))
+        assertFalse("a phone's proximity sensor reports a distance, not 1.0", Vi5300Presence.isVi5300("TMD2725 Proximity"))
+        assertFalse(Vi5300Presence.isVi5300(null))
     }
 }

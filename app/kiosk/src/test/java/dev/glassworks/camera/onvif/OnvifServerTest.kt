@@ -24,6 +24,8 @@ class OnvifServerTest {
     private val pass = "secret"
     private var server: OnvifServer? = null
 
+    private val logged = java.util.Collections.synchronizedList(mutableListOf<String>())
+
     private fun newServer(withCreds: Boolean = true, snapshot: (() -> ByteArray?)? = { byteArrayOf(1, 2, 3) }) = OnvifServer(
         port = 0,
         host = { "192.0.2.41" },
@@ -31,7 +33,8 @@ class OnvifServerTest {
         stream = { OnvifStreamInfo("rtsp://192.0.2.41:8554/live", 1920, 1080, 30, 6000) },
         credentials = { if (withCreds) user to pass else null },
         snapshot = snapshot,
-        enableDiscovery = false
+        enableDiscovery = false,
+        onLog = { logged += it },
     ).also { server = it }
 
     @After fun tearDown() { server?.stop() }
@@ -111,12 +114,52 @@ class OnvifServerTest {
         val challenge = call(s, "<tds:GetDeviceInformation/>", header = "").headers.first { it.second.startsWith("Digest") }.second
         val nonce = Regex("nonce=\"([^\"]+)\"").find(challenge)!!.groupValues[1]
         val uri = "/onvif/device_service"
-        val ha1 = OnvifXml.md5Hex("$user:AndroidIPCamera:$pass")
+        val ha1 = OnvifXml.md5Hex("$user:Glassworks:$pass")
         val ha2 = OnvifXml.md5Hex("POST:$uri")
         val resp = OnvifXml.md5Hex("$ha1:$nonce:00000001:abc:auth:$ha2")
-        val auth = "Digest username=\"$user\", realm=\"AndroidIPCamera\", nonce=\"$nonce\", uri=\"$uri\", qop=auth, nc=00000001, cnonce=\"abc\", response=\"$resp\""
+        val auth = "Digest username=\"$user\", realm=\"Glassworks\", nonce=\"$nonce\", uri=\"$uri\", qop=auth, nc=00000001, cnonce=\"abc\", response=\"$resp\""
         val r = s.handle("POST", uri, mapOf("authorization" to auth), soap("<tds:GetDeviceInformation/>", "").toByteArray())
         assertEquals(r.text, 200, r.status)
+    }
+
+    private fun digest(nonce: String, password: String = pass, uri: String = "/onvif/media_service"): Map<String, String> {
+        val ha1 = OnvifXml.md5Hex("$user:Glassworks:$password")
+        val ha2 = OnvifXml.md5Hex("POST:$uri")
+        val resp = OnvifXml.md5Hex("$ha1:$nonce:00000001:abc:auth:$ha2")
+        return mapOf("authorization" to "Digest username=\"$user\", realm=\"Glassworks\", nonce=\"$nonce\", uri=\"$uri\", qop=auth, nc=00000001, cnonce=\"abc\", response=\"$resp\"")
+    }
+
+    @Test fun `a wrong sign-in gets a final SOAP auth fault, a forgotten nonce a fresh challenge`() {
+        // The tablet run: UniFi Protect polled GetProfiles with an older app's sign-in.
+        val s = newServer()
+        fun profiles(headers: Map<String, String>, header: String = "") =
+            s.handle("POST", "/onvif/media_service", headers, soap("<trt:GetProfiles/>", header).toByteArray())
+
+        // WS-Security with the wrong password: SOAP 1.2 env:Sender / ter:NotAuthorized, and no new challenge.
+        val ws = profiles(emptyMap(), usernameToken(password = "an-old-apps-password"))
+        assertEquals(400, ws.status)
+        val fault = OnvifXml.parse(ws.text)!!.documentElement
+        assertTrue(ws.text, ws.text.contains("s:Sender") && ws.text.contains("ter:NotAuthorized"))
+        assertNotNull(OnvifXml.find(fault, "Fault"))
+        assertTrue("nothing invites a retry", ws.headers.none { it.first == "WWW-Authenticate" })
+
+        // HTTP Digest with the wrong password, on a nonce we issued: the same final fault.
+        val issued = Regex("nonce=\"([^\"]+)\"").find(profiles(emptyMap()).headers.first { it.second.startsWith("Digest") }.second)!!.groupValues[1]
+        val wrong = profiles(digest(issued, password = "an-old-apps-password"))
+        assertEquals(400, wrong.status)
+        assertTrue(wrong.headers.none { it.first == "WWW-Authenticate" })
+
+        // The right password on a nonce this server never issued (it restarted): sign in again, once.
+        val stale = profiles(digest("0123456789abcdef0123456789abcdef"))
+        assertEquals(401, stale.status)
+        val again = stale.headers.first { it.second.startsWith("Digest") }.second
+        assertTrue(again, again.contains("stale=true"))
+        val fresh = Regex("nonce=\"([^\"]+)\"").find(again)!!.groupValues[1]
+        assertEquals(200, profiles(digest(fresh)).status)
+
+        // A forgotten nonce with the wrong password isn't stale: it's refused.
+        assertEquals(400, profiles(digest("fedcba9876543210fedcba9876543210", password = "an-old-apps-password")).status)
+        assertTrue("a stale nonce isn't logged as refused", logged.none { "refused" in it && "GetProfiles" in it && "match" !in it })
     }
 
     @Test fun `device information and network interface carry identity`() {
@@ -195,6 +238,52 @@ class OnvifServerTest {
         assertEquals(400, call(s, pull, path).status)
     }
 
+    /** The time an element holds, in ms; it must be UTC with a Z, as Home Assistant's client reads it. */
+    private fun utc(el: org.w3c.dom.Element, name: String): Long {
+        val t = OnvifXml.text(el, name)!!
+        assertTrue("$name is UTC with a Z: $t", Regex("""^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$""").matches(t))
+        return OnvifXml.parseDateTime(t)!!
+    }
+
+    @Test fun `subscription times are UTC, last the interval asked for, and a renew moves the end on`() {
+        // Home Assistant 2026.11.1 (onvif-zeep-async 4.3.0) asks for PT600S and renews at 80 % of
+        // TerminationTime - CurrentTime: about every 8 minutes with these answers.
+        val s = newServer()
+        val created = parseOk(call(s, "<tev:CreatePullPointSubscription><tev:InitialTerminationTime>PT600S</tev:InitialTerminationTime></tev:CreatePullPointSubscription>", "/onvif/events_service")).documentElement
+        val path = OnvifXml.text(created, "Address")!!.substringAfter("192.0.2.41:${s.localPort}")
+        val now0 = utc(created, "CurrentTime")
+        val end0 = utc(created, "TerminationTime")
+        assertTrue("now is now", kotlin.math.abs(now0 - System.currentTimeMillis()) < 2_000)
+        assertEquals(600_000L, end0 - now0)
+
+        Thread.sleep(1_100) // a second later, so the end visibly moves
+        val renewed = parseOk(call(s, "<wsnt:Renew><wsnt:TerminationTime>PT600S</wsnt:TerminationTime></wsnt:Renew>", path)).documentElement
+        val now1 = utc(renewed, "CurrentTime")
+        val end1 = utc(renewed, "TerminationTime")
+        assertEquals(600_000L, end1 - now1)
+        assertTrue("the renew extends the subscription", end1 > end0)
+
+        // An absolute end (what the client sends once it judges a camera's relative times broken) is kept.
+        val at = OnvifXml.isoUtc(System.currentTimeMillis() + 300_000)
+        val absolute = parseOk(call(s, "<wsnt:Renew><wsnt:TerminationTime>$at</wsnt:TerminationTime></wsnt:Renew>", path)).documentElement
+        assertEquals(at, OnvifXml.text(absolute, "TerminationTime"))
+
+        // A pull says the same end, and the subscription is still there.
+        val pulled = parseOk(call(s, "<tev:PullMessages><tev:Timeout>PT0S</tev:Timeout><tev:MessageLimit>10</tev:MessageLimit></tev:PullMessages>", path)).documentElement
+        assertEquals(at, OnvifXml.text(pulled, "TerminationTime"))
+        assertTrue(utc(pulled, "TerminationTime") > utc(pulled, "CurrentTime"))
+    }
+
+    @Test fun `a refused sign-in is logged once a minute per client, without the sign-in`() {
+        val s = newServer()
+        val pull = "<tev:PullMessages><tev:Timeout>PT0S</tev:Timeout></tev:PullMessages>"
+        repeat(5) { assertEquals(400, call(s, pull, "/onvif/pullpoint/x", header = usernameToken(password = "an-old-apps-password")).status) }
+        val lines = logged.filter { "refused" in it }
+        assertEquals(lines.toString(), 1, lines.size)
+        assertTrue(lines.single(), lines.single().contains("PullMessages") && lines.single().contains("doesn't match"))
+        assertTrue("no username or password in the log", lines.none { user in it || pass in it || "an-old-apps-password" in it })
+    }
+
     @Test fun `no sign-in set means nobody gets in, but date and time is open`() {
         val s = newServer(withCreds = false)
         assertEquals(401, call(s, "<trt:GetProfiles/>", "/onvif/media_service", header = "").status)
@@ -247,15 +336,46 @@ class OnvifServerTest {
         assertNull(OnvifXml.parse(bomb) { AndroidLikeFactory() })
     }
 
+    @Test fun `a request head past the bounds is refused before sign-in`() {
+        val s = newServer().also { it.start() }
+        val sock = java.net.Socket("127.0.0.1", s.localPort).apply { soTimeout = 3000 }
+        val head = StringBuilder("POST /onvif/device_service HTTP/1.1\r\nHost: x\r\n")
+        repeat(80) { head.append("X-Pad-$it: y\r\n") }
+        sock.getOutputStream().write((head.toString() + "Content-Length: 0\r\n\r\n").toByteArray())
+        assertEquals("closed, no answer", -1, sock.getInputStream().read())
+        sock.close()
+    }
+
+    @Test fun `the challenge carries the panel's name`() {
+        val s = OnvifServer(port = 0, host = { "192.0.2.41" }, info = { OnvifDeviceInfo("x", "x", "x", "x", "x", "02:00:00:00:00:02", "") },
+            stream = { OnvifStreamInfo("rtsp://192.0.2.41:8554/live", 1280, 720, 15, 1400) },
+            credentials = { user to pass }, enableDiscovery = false, name = "Hall Panel").also { server = it }
+        val r = call(s, "<tds:GetDeviceInformation/>", header = "")
+        assertEquals(401, r.status)
+        assertTrue(r.headers.any { it.second.contains("realm=\"Hall Panel\"") })
+        val host = call(s, "<tds:GetHostname/>").text
+        assertTrue("an empty device name falls back to a Glassworks host name", host.contains("glassworks-camera"))
+    }
+
     @Test fun `nothing listens until start`() {
         val port = java.net.ServerSocket(0).use { it.localPort }
         val s = OnvifServer(port = port, host = { "192.0.2.41" }, info = { error("unused") }, stream = { error("unused") },
             credentials = { user to pass }, enableDiscovery = false).also { server = it }
-        java.net.ServerSocket(port).close()
+        assertTrue("free: the constructor opened nothing", bindsWithin(port))
         s.start()
-        assertTrue(runCatching { java.net.ServerSocket(port).close() }.isFailure)
+        assertTrue("taken while it runs", runCatching { java.net.ServerSocket(port).close() }.isFailure)
         s.stop()
-        java.net.ServerSocket(port).close()
+        assertTrue("and stop() let it go", bindsWithin(port))
+    }
+
+    /** Binds [port] and lets it go, retrying until [deadlineMs]: a just-closed socket can take a moment to free on a busy machine. */
+    private fun bindsWithin(port: Int, deadlineMs: Long = 5_000): Boolean {
+        val until = System.currentTimeMillis() + deadlineMs
+        while (true) {
+            val ok = runCatching { java.net.ServerSocket(port).close() }.isSuccess
+            if (ok || System.currentTimeMillis() > until) return ok
+            Thread.sleep(50)
+        }
     }
 
     @Test fun `http server serves SOAP and snapshot over sockets`() {

@@ -94,6 +94,15 @@ class SettingsMockups {
         shot("settings-18-wall-base", menu(radioRunning = true), "wall-base")
         shot("settings-19-time-zone", menu(radioRunning = true), "time-zone")
         shot("settings-20-diagnostics", menu(radioRunning = true), "diagnostics")
+        // #117: the camera pane on a panel without a camera (the S1). Off by default, it folds under "Off · 1"
+        // with its off page; turned on, it is greyed in the rail and its page says why it can't run.
+        val noCamera = dev.glassworks.camera.CameraDefinition(KioskPrefs(RuntimeEnvironment.getApplication()).paneFile("camera"), hasCamera = false)
+        noCamera.switch.on = false
+        shot("settings-21-camera-rail", menu(radioRunning = true, extra = listOf(noCamera)), "voice")
+        shot("settings-22-camera-off", menu(radioRunning = true, extra = listOf(noCamera)), "camera")
+        noCamera.switch.on = true
+        shot("settings-23-camera-cant-run", menu(radioRunning = true, extra = listOf(noCamera)), "camera")
+        noCamera.switch.on = false
         shot("settings-16-screen-scrolled", menu(radioRunning = true), "screen") { o ->
             Mockup.layout(o)
             o.previewScrollTo(Mockup.label(o, "Brightness"), alignBottom = true)

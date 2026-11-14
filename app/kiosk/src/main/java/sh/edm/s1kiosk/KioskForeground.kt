@@ -6,7 +6,8 @@ import dev.glassworks.platform.PlatformApi
 /**
  * The foreground service types [KioskService] runs with, and the calls that set them.
  *
- * Microphone for the voice satellite. Location so the S1 can scan for Wi-Fi with the screen off
+ * Microphone for the voice satellite. Camera for the camera pane's presence with the screen off (#117),
+ * only once Android allows the camera. Location so the S1 can scan for Wi-Fi with the screen off
  * (#3): on Android 10 a granted location permission is allowed in the foreground only, and a
  * foreground service counts as foreground for location only with the location type.
  *
@@ -34,9 +35,10 @@ class KioskForeground(
     var types: Int? = null
         private set
 
-    private fun wanted(micGranted: Boolean, locationGranted: Boolean): Int {
+    private fun wanted(micGranted: Boolean, locationGranted: Boolean, cameraGranted: Boolean): Int {
         val t = (if (micGranted || !platform.foregroundServiceTypesNeedTheirPermission) MICROPHONE else 0) or
-            (if (locationGranted) LOCATION else 0)
+            (if (locationGranted) LOCATION else 0) or
+            (if (cameraGranted) CAMERA else 0)
         return if (t == 0) CONNECTED_DEVICE else t
     }
 
@@ -44,11 +46,17 @@ class KioskForeground(
      * Returns the types the service runs with after this call. When every type is refused, the
      * first start throws the last refusal, and a later one keeps the types the service runs with.
      */
-    fun promote(micGranted: Boolean, locationGranted: Boolean): Int {
-        val want = wanted(micGranted, locationGranted)
+    fun promote(micGranted: Boolean, locationGranted: Boolean, cameraGranted: Boolean = false): Int {
+        val want = wanted(micGranted, locationGranted, cameraGranted)
         val running = types
         if (running == want) return running
-        val tries = listOf(want, want and LOCATION.inv(), want and MICROPHONE.inv()).filter { it != 0 }.plus(CONNECTED_DEVICE).distinct()
+        // Every subset of the wanted types, most types first; among equals, keep the microphone, then
+        // location, then the camera. So two refused types still leave the third.
+        val kinds = listOf(MICROPHONE, LOCATION, CAMERA).filter { want and it != 0 }
+        val subsets = (1 until (1 shl kinds.size)).map { m -> kinds.filterIndexed { i, _ -> m shr i and 1 == 1 }.fold(0) { a, k -> a or k } }
+        val keep = { t: Int -> (if (t and MICROPHONE != 0) 4 else 0) + (if (t and LOCATION != 0) 2 else 0) + (if (t and CAMERA != 0) 1 else 0) }
+        val tries = subsets.sortedWith(compareByDescending<Int> { Integer.bitCount(it) }.thenByDescending(keep))
+            .plus(CONNECTED_DEVICE).distinct()
         for ((i, t) in tries.withIndex()) {
             try {
                 startWith(t)
@@ -71,10 +79,11 @@ class KioskForeground(
         const val MICROPHONE = ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
         const val LOCATION = ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
         const val CONNECTED_DEVICE = ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
+        const val CAMERA = ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA
 
         /** The manifest names of [types], for the log: `microphone, location`. */
         fun names(types: Int): String =
-            listOf(MICROPHONE to "microphone", LOCATION to "location", CONNECTED_DEVICE to "connectedDevice")
+            listOf(MICROPHONE to "microphone", LOCATION to "location", CAMERA to "camera", CONNECTED_DEVICE to "connectedDevice")
                 .filter { types and it.first != 0 }.joinToString(", ") { it.second }
     }
 }

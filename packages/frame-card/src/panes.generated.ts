@@ -66,6 +66,18 @@ export const PANE_FILES: readonly PaneInfo[] = [
     "source": "app/kiosk/src/main/java/dev/glassworks/bluetoothproxy"
   },
   {
+    "id": "camera",
+    "name": "Camera",
+    "does": "Wakes the screen on motion that isn't a light change; snapshots and an ONVIF stream if you allow them.",
+    "requires": [
+      "camera"
+    ],
+    "status": "alpha",
+    "docs": "docs/esphome.md#camera-entities",
+    "icon": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"2.5\" y=\"6.5\" width=\"13.5\" height=\"11\" rx=\"3\"/><circle cx=\"9.25\" cy=\"12\" r=\"2.6\"/><path d=\"M16 10.2 21.5 7.5v9L16 13.8\"/></svg>",
+    "source": "app/kiosk/src/main/java/dev/glassworks/camera"
+  },
+  {
     "id": "diagnostics",
     "name": "Diagnostics",
     "does": "CPU, temperature, RAM, storage, Wi-Fi and uptime in Home Assistant.",

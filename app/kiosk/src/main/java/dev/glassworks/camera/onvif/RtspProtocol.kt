@@ -3,7 +3,8 @@
  * Ported from android-ip-camera: aguilaair/android-ip-camera, branch onvif-rtsp-motion, commit
  * 7b5e6f28; a fork of DigitallyRefined/android-ip-camera. Copyright (c) 2025 DigitallyRefined and
  * contributors. The licence text is in THIRD-PARTY-NOTICES.md and LICENSES/MIT.txt.
- * Changes: package only. */
+ * Changes: package; "Glassworks" (or the panel's name, from RtspServer) in place of "AndroidIPCamera"
+ * in the realm, SDP and RTCP; `a=framerate` when the frame rate is known. */
 
 package dev.glassworks.camera.onvif
 
@@ -156,7 +157,7 @@ internal data class RtspTransport(
 }
 
 /** RTSP authentication: HTTP Digest (MD5, RFC 2617 incl. qop=auth) and Basic. */
-internal class RtspAuth(val realm: String = "AndroidIPCamera") {
+internal class RtspAuth(val realm: String = "Glassworks") {
     private val random = SecureRandom()
     private val nonces = object : LinkedHashMap<String, Long>(64, 0.75f, false) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Long>?) = size > 256
@@ -271,7 +272,7 @@ internal object RtspSdp {
         return RtspAuth.hex(sps.copyOfRange(1, 4))
     }
 
-    fun build(sps: ByteArray?, pps: ByteArray?, host: String, sessionId: Long, sessionName: String = "Android IP Camera"): String {
+    fun build(sps: ByteArray?, pps: ByteArray?, host: String, sessionId: Long, sessionName: String = "Glassworks", fps: Int = 0): String {
         val fmtp = StringBuilder("packetization-mode=1;profile-level-id=${profileLevelId(sps)}")
         if (sps != null && pps != null) {
             fmtp.append(";sprop-parameter-sets=${Base64Lite.encode(sps)},${Base64Lite.encode(pps)}")
@@ -282,12 +283,13 @@ internal object RtspSdp {
             append("s=$sessionName\r\n")
             append("c=IN IP4 0.0.0.0\r\n")
             append("t=0 0\r\n")
-            append("a=tool:AndroidIPCamera\r\n")
+            append("a=tool:Glassworks\r\n")
             append("a=range:npt=0-\r\n")
             append("a=control:*\r\n")
             append("m=video 0 RTP/AVP $PAYLOAD_TYPE\r\n")
             append("a=rtpmap:$PAYLOAD_TYPE H264/90000\r\n")
             append("a=fmtp:$PAYLOAD_TYPE $fmtp\r\n")
+            if (fps > 0) append("a=framerate:$fps\r\n") // Glassworks: clients otherwise guess (ffprobe: 90000/1)
             append("a=control:$TRACK_CONTROL\r\n")
         }
     }
@@ -340,7 +342,7 @@ internal object RtpH264Packetizer {
      * RTCP compound packet: Sender Report (RFC 3550 §6.4.1) + SDES CNAME. Recorders use the SR's
      * NTP↔RTP mapping to place frames on a wall-clock timeline.
      */
-    fun rtcpSenderReport(ssrc: Int, wallClockMs: Long, rtpTimestamp: Long, packets: Long, octets: Long, cname: String = "androidipcamera"): ByteArray {
+    fun rtcpSenderReport(ssrc: Int, wallClockMs: Long, rtpTimestamp: Long, packets: Long, octets: Long, cname: String = "glassworks"): ByteArray {
         val ntpSec = wallClockMs / 1000 + 2_208_988_800L            // 1900 epoch
         val ntpFrac = ((wallClockMs % 1000) shl 32) / 1000
         val sr = java.nio.ByteBuffer.allocate(28)

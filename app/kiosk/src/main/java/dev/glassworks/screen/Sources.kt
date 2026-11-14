@@ -19,6 +19,9 @@ interface PresenceSource {
      * it took, else why not, in words for the person at the panel.
      */
     fun setRange(context: Context, metres: Float): String? = null
+
+    /** Whether this device has the sensor. A frame's source can be wrong about a device it wasn't made for. */
+    fun available(context: Context): Boolean = true
 }
 
 /** Ambient light for [ScreenPolicy]'s brightness curve. */

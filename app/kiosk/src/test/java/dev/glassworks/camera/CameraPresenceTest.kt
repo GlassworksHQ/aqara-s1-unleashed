@@ -236,6 +236,30 @@ class CameraPresenceTest {
         assertEquals("said once, not again every period", 1, r.problems.size)
     }
 
+    @Test fun aSecondSilenceAfterTheCameraCameBackIsCaughtToo() {
+        val r = started()
+        r.feed(listOf(flat(60.0)))
+        r.timers.runDue(r.timers.now + CameraPresence.STALE_MS)
+        assertEquals(false to -1f, r.readings.last())
+        r.feed(listOf(flat(60.0), flat(60.0))) // back: the watchdog is armed again
+        assertEquals(0f, r.readings.last().second)
+        r.timers.runDue(r.timers.now + CameraPresence.STALE_MS)
+        assertEquals(false to -1f, r.readings.last())
+        assertEquals("each silence is reported once", listOf("no frames for 5 s", "no frames for 5 s"), r.problems)
+    }
+
+    @Test fun aCameraThatWontOpenReadsFarAgainWhenTheWatchdogFiresButSaysWhyOnce() {
+        val timers = Timers()
+        val readings = mutableListOf<Pair<Boolean, Float>>()
+        val problems = mutableListOf<String>()
+        val p = CameraPresence({ _, _ -> throw SecurityException("no permission") }, clock = { timers.now }, post = { it.run() },
+            after = timers::after, onProblem = { problems += it })
+        p.start(ctx) { near, raw -> readings += near to raw }
+        timers.runDue(CameraPresence.STALE_MS)
+        assertEquals(listOf(false to -1f, false to -1f), readings)
+        assertEquals(listOf("couldn't open the camera: SecurityException"), problems)
+    }
+
     @Test fun aStopDuringOpenClosesTheCameraOnceOpenReturns() {
         val entered = CountDownLatch(1)
         val release = CountDownLatch(1)

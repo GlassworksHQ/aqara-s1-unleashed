@@ -23,6 +23,9 @@ class Vi5300Presence(
     private val writeSecure: (Context, String, Int) -> Boolean = { c, name, v -> Settings.Secure.putInt(c.contentResolver, name, v) },
 ) : PresenceSource {
     internal companion object {
+        /** The S1's sensor is `vi5300 Proximity Sensor` (vendor lumi, docs/sensors.md). */
+        fun isVi5300(name: String?): Boolean = name?.contains("vi5300", ignoreCase = true) == true
+
         /** Lumi's threshold table (index -> decimetres), from com.lumi.systemmanager Monitor.java. */
         val RANGE_DM = intArrayOf(0, 1, 2, 4, 6, 8, 10, 12, 15, 20, 25)
         const val NO_RANGE = "The sensor's range didn't change: the app needs the permission to write secure settings (docs/sensors.md)."
@@ -30,6 +33,13 @@ class Vi5300Presence(
     }
 
     private var registered: SensorEventListener? = null
+
+    /**
+     * The S1 app also runs on devices without the S1's sensor (a tablet, until #23). Only the VI5300
+     * counts: this source reads 1.0 as near, and another device's proximity sensor reports a distance.
+     */
+    override fun available(context: Context): Boolean =
+        isVi5300((context.getSystemService(Context.SENSOR_SERVICE) as SensorManager).getDefaultSensor(Sensor.TYPE_PROXIMITY)?.name)
 
     override fun start(context: Context, onReading: (near: Boolean, raw: Float) -> Unit) {
         val sm = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager

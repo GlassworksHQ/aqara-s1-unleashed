@@ -39,6 +39,7 @@ export const CAPABILITIES: Readonly<Record<string, string>> = {
   'silabs-radio': 'a Silicon Labs radio',
   's1-wall-base': "the S1's wall base",
   'bluetooth-le': 'Bluetooth LE',
+  camera: 'a camera',
 };
 
 /** Own keys only: a plain `in` or index would also match Object.prototype's (`constructor`, `toString`). */

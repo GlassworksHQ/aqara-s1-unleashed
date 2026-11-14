@@ -389,6 +389,41 @@ Kiosk actions are applied in the running activity exactly like the `adb am start
 sensors) are pushed to HA right away (pref listener + `ScreenPolicy` listeners), with a 5 s
 poll as a safety net.
 
+### Camera entities
+
+The pane's on/off (`camera_pane`) is on every panel, as every pane's is (#67); on a panel without a camera, such as the S1, the pane's page says it can't run and nothing else exists. The rest only on a device with a camera, and the pane is off until you turn it on (#117).
+Presence comes from lighting-insensitive motion on the panel; no image leaves it in *Presence only*.
+
+| Entity | object_id | Category, default | What it does |
+|---|---|---|---|
+| camera `Camera` | `camera` | none, on | A still when Home Assistant asks, in *Presence + snapshots* only, and only over an encrypted connection; an empty image otherwise |
+| binary_sensor `Camera presence` (occupancy) | `camera_presence` | none, on | Someone moving in view; ends 8 s after the last movement. Lighting changes don't count |
+| switch `Camera privacy` | `camera_privacy` | none, on | Closes the camera: no presence, no stills, no stream |
+| select `Camera use` | `camera_use` | config, off | `Presence only` or `Presence + snapshots` |
+| switch `ONVIF stream` | `onvif_stream` | config, off | RTSP on 8554 and ONVIF on 8000 for HA's ONVIF integration, Frigate and UniFi Protect. Refused in *Presence only*; turned on, it runs with the panel's own sign-in; encrypted connections only |
+| number `Camera sensitivity` | `camera_sensitivity` | config, off | 1 (least) to 10 (most), default 5 |
+| switch `Camera pane` | `camera_pane` | config, off | The pane's on/off (#67). On every panel; on one without a camera it changes nothing |
+
+**The stream is not encrypted.** RTSP and ONVIF here are plain TCP: anyone on the network can watch
+the video of a session, and a client that signs in with Basic auth or WS-Security `PasswordText` sends
+the password in a form they can read. Turn it on only on a network you trust ([the limits](research/onvif-rtsp.md#result)).
+
+**The stream's sign-in is made for each panel.** The first time the stream is turned on without one,
+the panel makes its own: the username `glassworks` and a random 20-character password (letters and
+digits without the ones that read alike, from `SecureRandom`). It is never a default shared between
+panels, and it never changes by itself; clear it and turn the stream on again for a new one. The
+stream never runs without a sign-in. The password is never logged, and no entity or diagnostic
+carries it. Use this sign-in when you add the panel to Home Assistant's ONVIF integration, Frigate
+or UniFi Protect. A client that signs in wrong gets a SOAP `NotAuthorized` fault, and the panel logs
+the refusal once a minute per client.
+
+The camera's settings are set from adb until the Manage page edits settings (#178), through an
+activity only `adb shell` may start (another app on a tablet could otherwise turn privacy off or open
+the stream): `adb shell am start -n sh.edm.s1kiosk/.CameraAdbActivity --es camera_use snapshots --ez onvif_stream true`.
+`--es camera_stream_sign_in 'user:password'` sets your own sign-in in place of the panel's, and an
+empty value clears it (the next time the stream turns on, a new one is made). The pane's on/off is the
+usual `--ez camera_enabled true` on the main activity.
+
 ### App updates
 
 `update/UpdateManager.kt`; releases and signing in [releasing.md](releasing.md).

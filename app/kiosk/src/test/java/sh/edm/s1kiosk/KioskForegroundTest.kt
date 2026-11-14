@@ -127,13 +127,34 @@ class KioskForegroundTest {
         assertEquals("microphone", KioskForeground.names(mic))
     }
 
+    @Test fun theCameraTypeComesOnlyWithTheCameraAllowed() {
+        val camera = KioskForeground.CAMERA
+        assertEquals(mic or location, Starts().foreground(android10).promote(micGranted = true, locationGranted = true))
+        assertEquals(mic or location or camera, Starts().foreground(android10).promote(micGranted = true, locationGranted = true, cameraGranted = true))
+        assertEquals("microphone, location, camera", KioskForeground.names(mic or location or camera))
+    }
+
+    @Test fun aRefusedCameraTypeIsDroppedFirst() {
+        val camera = KioskForeground.CAMERA
+        val s = Starts(refuse = camera)
+        assertEquals(mic or location, s.foreground(android10).promote(micGranted = true, locationGranted = true, cameraGranted = true))
+        assertEquals(listOf(mic or location or camera, mic or location), s.calls)
+    }
+
+    @Test fun twoRefusedTypesStillLeaveTheThird() {
+        val camera = KioskForeground.CAMERA
+        val s = Starts(refuse = mic or camera)
+        assertEquals(location, s.foreground(android14).promote(micGranted = true, locationGranted = true, cameraGranted = true))
+        assertEquals(listOf(mic or location or camera, mic or location, mic or camera, location or camera, mic, location), s.calls)
+    }
+
     /** Android 10 throws when startForeground passes a type the manifest does not declare. */
     @Test fun theManifestDeclaresEveryTypeTheServiceStartsWith() {
         val manifest = File("src/main/AndroidManifest.xml").readText()
         val declared = Regex("""android:name="\.KioskService"[^>]*android:foregroundServiceType="([^"]+)"""")
             .find(manifest)!!.groupValues[1].split("|").toSet()
-        assertEquals(setOf("microphone", "location", "connectedDevice"), declared)
-        for (p in listOf("FOREGROUND_SERVICE_MICROPHONE", "FOREGROUND_SERVICE_LOCATION", "FOREGROUND_SERVICE_CONNECTED_DEVICE", "CHANGE_WIFI_STATE")) {
+        assertEquals(setOf("microphone", "location", "connectedDevice", "camera"), declared)
+        for (p in listOf("FOREGROUND_SERVICE_MICROPHONE", "FOREGROUND_SERVICE_LOCATION", "FOREGROUND_SERVICE_CONNECTED_DEVICE", "FOREGROUND_SERVICE_CAMERA", "CHANGE_WIFI_STATE")) {
             assertTrue(p, manifest.contains("android.permission.$p\""))
         }
     }

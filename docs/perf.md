@@ -1385,12 +1385,13 @@ Assistant:
   run with the warm-up has three warm ones. Whether it brings the S1 near ±10 MB is for the next
   run on the panel (after #181).
 - **Not switched**: since [#67](https://github.com/GlassworksHQ/glassworks/issues/67) every
-  pane has an on/off, but three aren't measured on their own (`not_switched` in `budgets.json`). The
+  pane has an on/off, but four aren't measured on their own (`not_switched` in `budgets.json`). The
   radio's on/off is its mode, which Clarity leaves as it is, so the panel's Zigbee or Thread network
   stays up; its processes are measured where they run. Timers come only with voice, so they are inside
   `assist`'s share. The Bluetooth proxy scans only while Home Assistant listens, which the reference
-  run doesn't, so on by itself it would measure an idle pane (#121). The report lists all three, with
-  why. The wall base, time zone and diagnostics shares
+  run doesn't, so on by itself it would measure an idle pane (#121). The S1 has no camera, so the
+  camera pane can't run there; its code still ships, so it keeps a size budget (#117). The report
+  lists all four, with why. The wall base, time zone and diagnostics shares
   have not been measured on a panel yet.
 
 **Why not an emulator in CI** (assessed 2026-11-13, from the build and the panes' needs; not tried).
