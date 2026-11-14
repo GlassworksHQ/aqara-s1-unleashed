@@ -305,7 +305,7 @@ if [ "$REF" = 1 ]; then
   # How many graded runs were attempted, so a run that left no file still counts against the grade.
   printf '{"runs": %d}\n' "$RUNS" > "$OUT/plan.json"
   # The graded part. The kiosk is pointed at the reference dashboard's start view; each run
-  # force-stops it, times the restart to that view being usable, then opens the three reference
+  # force-stops it, times the restart to that view being usable, then opens the four reference
   # views in turn within the loaded frontend (the order turns each run).
   log "pointing the kiosk at the reference dashboard for the graded runs (it goes back to $RESTORE after)"
   DASHBOARD_OK=0

@@ -250,6 +250,11 @@
       }
       return v.length ? Math.max(...v) : null;
     });
+    // One sample without a timestamp (an engine that doesn't fill it, or a test's samples): the
+    // reports' clock can't be tied to the page's for that sample, so every interval runs on the ask
+    // times instead (`clock: "asked"`). Then a late answer can count frames and freezes up to its
+    // own snapshot against an interval that ends at the ask: at most the end sample's wait,
+    // statsWaitMs (10 s), on the window's last interval. Gecko and Chrome both fill it.
     if (ts.some((x) => x === null)) return { times: samples.map((s) => s.t), clock: "asked" };
     return { times: ts.map((x) => samples[0].t + (x - ts[0])), clock: "stats" };
   }

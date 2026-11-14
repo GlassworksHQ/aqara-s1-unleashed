@@ -1,7 +1,7 @@
 """Clarity's fixed home (MIT): the entities, their states and history, HA's config, panels and
 services, and the reference dashboard as a real Lovelace config, for the fake Home Assistant
 (fakeha.py): one dashboard whose views are the start view (where the kiosk comes back to after a
-restart) and the three reference tiers. Everything is seeded, so every run serves the same home.
+restart), the four reference views (light, typical without and with its camera, heavy) and the HLS copies. Everything is seeded, so every run serves the same home.
 
 The counts are in page/tiers.json, the one source the harness reads too.
 """
@@ -232,7 +232,7 @@ def plain_pictures(view):
 
 
 def lovelace(url_path):
-    """The one reference dashboard: its views are the start view and the three reference tiers, each
+    """The one reference dashboard: its views are the start view, the four reference views and the HLS copies, each
     at its own path (/clarity-ref/<view>). Opening a view is HA's own navigation within it."""
     if url_path != DASHBOARD:
         return {"views": [{"title": "Home", "cards": []}]}

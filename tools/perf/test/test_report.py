@@ -559,6 +559,10 @@ class StallsNotReported(unittest.TestCase):
         ok = R.camera_run(camera_line("typical"), "typical")
         self.assertNotIn("stalls_reported", ok)
         self.assertEqual(G.camera_level(ok), "good")
+        # No span to measure gaps over (one sample, nothing decoded): max_gap null, also n/a.
+        line = camera_line("typical")
+        line["streams"][0].update(max_gap_ms=None)
+        self.assertEqual(R.camera_run(line, "typical")["stalls_reported"], False)
 
 
 class CameraDetail(unittest.TestCase):

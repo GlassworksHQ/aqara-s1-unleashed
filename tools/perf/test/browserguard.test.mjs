@@ -10,7 +10,7 @@ import { mkdtempSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir, platform } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { sweepStale } from "./browserguard.mjs";
+import { ere, sweepStale } from "./browserguard.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const alive = (dir) => (spawnSync("pgrep", ["-f", dir], { encoding: "utf8" }).stdout || "").trim().length > 0;
@@ -54,6 +54,22 @@ for (const how of ["SIGTERM", "SIGINT", "SIGKILL", "throw", "exit"]) {
     }
   });
 }
+
+test("sweepStale knows Chrome's --user-data-dir, and paths match as literal text", { skip: platform() === "win32" }, async () => {
+  const stale = mkdtempSync(join(tmpdir(), "gw-guard-"));
+  spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)", "--", `--user-data-dir=${join(stale, "profile")}`],
+        { detached: true, stdio: "ignore" }).unref();
+  try {
+    await sleep(300);
+    rmSync(stale, { recursive: true, force: true });
+    assert.equal(sweepStale(["gw-guard-"]).length, 1);
+    assert.ok(await gone(stale, 3000));
+  } finally {
+    spawnSync("pkill", ["-f", stale]);
+  }
+  // An ERE metacharacter in a path is literal text for the watchdog's pkill.
+  assert.equal(ere("/tmp/a.b+c(1)"), "/tmp/a\\.b\\+c\\(1\\)");
+});
 
 test("sweepStale kills a leftover browser whose directory is gone, and leaves a live one", { skip: platform() === "win32" }, async () => {
   const stale = mkdtempSync(join(tmpdir(), "gw-guard-")), live = mkdtempSync(join(tmpdir(), "gw-guard-"));

@@ -145,7 +145,7 @@ class FakeHA(unittest.TestCase):
         self.assertIn("home", panels["result"])
         self.assertIn("clarity-ref", panels["result"])
         cfg, _ = ws.call({"type": "lovelace/config", "url_path": "clarity-ref", "force": False})
-        # One dashboard: the start view (where a restart lands), then the three reference views.
+        # One dashboard: the start view (where a restart lands), then the four reference views and the HLS copies.
         self.assertEqual([(v["path"], len(v["cards"])) for v in cfg["result"]["views"]],
                          [("start", 23), ("light", 20), ("typical-nocam", 50), ("typical", 50), ("heavy", 120), ("typical-hls", 50),
                           ("heavy-hls", 120)])

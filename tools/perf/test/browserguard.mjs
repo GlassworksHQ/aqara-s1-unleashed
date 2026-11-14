@@ -16,8 +16,20 @@ import { existsSync } from "node:fs";
 const profiles = new Set();
 let installed = false;
 
+// Every process (but this one) whose command line contains `text`, matched literally: [{pid, command}].
+function matching(text) {
+  const ps = spawnSync("ps", ["-axo", "pid=,command="], { encoding: "utf8" }).stdout || "";
+  return ps.split("\n").map((l) => /^\s*(\d+)\s+(.*)$/.exec(l)).filter(Boolean)
+    .map((m) => ({ pid: Number(m[1]), command: m[2] })).filter((p) => p.pid !== process.pid && p.command.includes(text));
+}
+
+// For pkill -f, whose pattern is an extended regular expression: the path as literal text.
+export const ere = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
 export function killProfile(profile) {
-  spawnSync("pkill", ["-f", profile]);
+  for (const p of matching(profile)) {
+    try { process.kill(p.pid, "SIGKILL"); } catch (e) { /* gone already */ }
+  }
 }
 
 function killAll() {
@@ -47,7 +59,7 @@ export function guard(profile) {
   profiles.add(profile);
   // The watchdog: a shell, detached from the test, that outlives a SIGKILL of it.
   const sh = `while kill -0 ${process.pid} 2>/dev/null; do sleep 2; done; pkill -f "$1"`;
-  const w = spawn("sh", ["-c", sh, "browserguard", profile], { detached: true, stdio: "ignore" });
+  const w = spawn("sh", ["-c", sh, "browserguard", ere(profile)], { detached: true, stdio: "ignore" });
   w.unref();
   return () => {
     killProfile(profile);
@@ -55,22 +67,19 @@ export function guard(profile) {
   };
 }
 
-// Kills leftover browsers from earlier tests: a process whose command line names a profile under
-// one of these temporary-directory prefixes (gw-gecko-, gw-gecko-ha-) whose directory is gone.
+// Kills leftover browsers from earlier tests: a process whose command line names a profile
+// (Firefox's --profile <dir>, Chrome's --user-data-dir=<dir>) under one of these temporary-directory
+// prefixes (gw-gecko-, gw-e2e-) whose directory is gone.
 export function sweepStale(markers) {
-  const ps = spawnSync("ps", ["-axo", "pid=,command="], { encoding: "utf8" }).stdout || "";
   const killed = [];
-  for (const line of ps.split("\n")) {
-    const m = /^\s*(\d+)\s+(.*)$/.exec(line);
-    if (!m || Number(m[1]) === process.pid) continue;
-    const prof = /--profile\s+(\S+)/.exec(m[2]);
-    if (!prof || !markers.some((k) => prof[1].includes(k))) continue;
-    if (!existsSync(prof[1])) {
-      try {
-        process.kill(Number(m[1]), "SIGKILL");
-        killed.push(Number(m[1]));
-      } catch (e) { /* gone already */ }
-    }
+  for (const p of matching("")) {
+    const m = /--profile\s+(\S+)|--user-data-dir=(\S+)/.exec(p.command);
+    const dir = m && (m[1] || m[2]);
+    if (!dir || !markers.some((k) => dir.includes(k)) || existsSync(dir)) continue;
+    try {
+      process.kill(p.pid, "SIGKILL");
+      killed.push(p.pid);
+    } catch (e) { /* gone already */ }
   }
   return killed;
 }

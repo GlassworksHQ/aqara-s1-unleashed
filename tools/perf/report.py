@@ -300,6 +300,9 @@ def camera_run(line, tier):
         return None
     streams = line.get("streams") or []
     played = [s for s in streams if s.get("first_frame_ms") is not None and s.get("shown_pct") is not None]
+    # Streams that showed a frame but whose stalls or gaps couldn't be measured: their receiver
+    # reported no freeze counts (stall_total_ms null), or there was no span to measure gaps over (one
+    # sample, nothing decoded: max_gap_ms null). Both are n/a, never 0.
     unreported = [s for s in played if s.get("stall_total_ms") is None or s.get("max_gap_ms") is None]
     whole = len(played) == len(streams) and len(streams) >= (line.get("expected") or 0)
     return {
@@ -308,8 +311,8 @@ def camera_run(line, tier):
         "path": line.get("path") or "hls",
         "first_frame_ms": max(s["first_frame_ms"] for s in played) if whole and played else None,
         "shown_pct": min(s["shown_pct"] for s in played) if whole and played else None,
-        # A stream whose receiver reported no freeze counts has no stalls or gaps (n/a, not 0): the
-        # run's are then n/a too, and its camera level not measured (grade.camera_level).
+        # A stream whose stalls or gaps are n/a (above) makes the run's n/a too, not 0, and its camera
+        # level not measured (grade.camera_level).
         "max_gap_ms": max(s["max_gap_ms"] for s in played) if whole and played and not unreported else None,
         "stall_total_ms": max(s["stall_total_ms"] for s in played) if whole and played and not unreported else None,
         **({"stalls_reported": False} if whole and played and unreported else {}),
@@ -1276,7 +1279,8 @@ def coverage_reasons(ref, attempted):
             out.append(f"{t}: measured in fewer runs than attempted ({', '.join(short)})")
         na = sum(1 for c in (s_ or {}).get("camera_runs") or [] if c.get("stalls_reported") is False)
         if na:
-            out.append(f"{t}: {na} camera run(s) without the receiver's freeze counts (stalls n/a, not measured)")
+            out.append(f"{t}: {na} camera run(s) whose stalls couldn't be measured (no freeze counts from the receiver, "
+                       "or no frames to measure gaps over): n/a, not measured")
         rtts = (s_ or {}).get("clock_rtt_ms") or []
         if any(r is None or r > CLOCK_RTT_MS for r in rtts):
             out.append(f"{t}: the live changes' send times rest on a clock tie looser than ±{CLOCK_RTT_MS // 2} ms in some run")
