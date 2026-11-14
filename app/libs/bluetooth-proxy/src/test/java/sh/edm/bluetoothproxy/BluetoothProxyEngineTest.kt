@@ -170,6 +170,19 @@ class BluetoothProxyEngineTest {
         assertNull(engine.status.failure)
     }
 
+    /** The other half of the guard: the scan failed and nothing replaced it, so its generation is still current (#222 delta review). */
+    @Test fun aFailedScansLateAdvertisementNeitherCountsNorClearsItsFailure() {
+        subscribe(true)
+        val l = scanner.listener!!
+        scanner.running = false
+        l.onFailed(ScanFailure.LOCATION_OFF)
+        loop.advanceBy(0)
+        l.onAdvertisement(0xC0FFEE0000AAL, -50, byteArrayOf(2, 1, 6)) // the same scan's, late
+        loop.advanceBy(1_000)
+        assertEquals("the failure stays", ScanFailure.LOCATION_OFF, engine.status.failure)
+        assertEquals("nothing forwarded", emptyList<List<RawAdvertisement>>(), sent)
+    }
+
     @Test fun bluetoothComingBackRetriesAtOnce() {
         subscribe(true)
         repeat(3) {
