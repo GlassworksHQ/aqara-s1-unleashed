@@ -1,0 +1,11 @@
+{
+  "id": "assist",
+  "name": "Assist",
+  "does": "Wake word and voice overlay.",
+  "requires": [
+    "microphone",
+    "speaker"
+  ],
+  "status": "beta",
+  "docs": "docs/esphome.md#voice-assistant"
+}

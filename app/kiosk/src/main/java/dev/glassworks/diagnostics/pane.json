@@ -1,0 +1,8 @@
+{
+  "id": "diagnostics",
+  "name": "Diagnostics",
+  "does": "CPU, temperature, RAM, storage, Wi-Fi and uptime in Home Assistant.",
+  "requires": [],
+  "status": "alpha",
+  "docs": "docs/esphome.md#diagnostics"
+}
