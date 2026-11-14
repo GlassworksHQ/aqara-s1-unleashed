@@ -496,4 +496,17 @@ class ManageServerTest {
         val page = b.get("/screen2").text()
         assertTrue(page, page.contains("After 2 minutes"))
     }
+
+    @Test fun theReloadNeverLeavesThePanel() {
+        // `////attacker.example/` reaches the server as the path `//attacker.example/`, which a browser reads as a host.
+        val anon = f.Browser(fetchMetadata = false)
+        val page = anon.get("//attacker.example/").text()
+        assertFalse(page, page.contains("attacker.example"))
+        assertTrue(page.contains("url=/?${ManageServer.RELOADED}=1"))
+        val b = f.Browser()
+        b.signInWithHa()
+        val r = b.get("//attacker.example/?${ManageServer.RELOADED}=1")
+        assertEquals(303, r.status)
+        assertEquals("/", r.headers["Location"])
+    }
 }

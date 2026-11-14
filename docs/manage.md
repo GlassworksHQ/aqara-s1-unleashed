@@ -92,7 +92,8 @@ manage a panel. Whether other users get a say is open (#124).
 - **The sign-in's exchange with Home Assistant, if Home Assistant is on `http://`.** The panel trades
   the one-time code for Home Assistant's tokens, asks who you are and revokes them, over the address it
   has, so over `http://` these pass in the clear for a few seconds. Revoking the refresh token also ends
-  its access token, so a caught token works only until then. Someone who can *change* that traffic could
+  its access token, so a caught token works only until then. If Home Assistant refuses the revoke twice,
+  the refresh token stays until you delete it (see above), and the Log says so. Someone who can *change* that traffic could
   also answer for Home Assistant and sign in as an administrator. This is a choice: most Home Assistant
   installs on a home network are `http://`, the panel's own dashboard sign-in crosses the same way, and
   the code on the panel is there for whoever would rather not.

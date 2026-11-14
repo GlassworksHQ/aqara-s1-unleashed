@@ -59,7 +59,8 @@ class ManageServer(
         if (req.method == "POST" && !sameOrigin(req)) return HttpResponse.text(403, "This form didn't come from the panel's own page.")
         val session = sessions.lookup(req.cookies[SESSION], haBase())
         // Back from the reload in signedOut() with the cookie: the same page, without the mark.
-        if (session != null && req.method == "GET" && req.query[RELOADED] != null) return HttpResponse.seeOther(withoutMark(req))
+        // safeNext: a path on this panel only (`//host/` would leave it).
+        if (session != null && req.method == "GET" && req.query[RELOADED] != null) return HttpResponse.seeOther(safeNext(withoutMark(req)))
         return when (req.path) {
             "/favicon.ico" -> HttpResponse.text(404, "")
             "/manage/ha" -> post(req) { startHa(req) }
@@ -90,7 +91,7 @@ class ManageServer(
         // at all. The mark keeps it to one reload: back without a session, it's the sign-in page.
         val site = req.headers["sec-fetch-site"]
         if (req.query[RELOADED] == null && req.cookies[SESSION] == null && (site == "cross-site" || site == null)) {
-            val to = withoutMark(req)
+            val to = safeNext(withoutMark(req))
             return html(200, pages.bounce(name(), to + (if ('?' in to) "&" else "?") + "$RELOADED=1"))
         }
         return signInPage(req, safeNext(withoutMark(req)), null)
