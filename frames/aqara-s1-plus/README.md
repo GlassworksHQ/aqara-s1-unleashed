@@ -40,7 +40,7 @@
   <a href="https://www.glassworks.dev/frames/aqara-s1-plus">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="https://www.glassworks.dev/frames/aqara-s1-plus/clarity-on-dark.svg">
-      <img alt="Clarity grade" src="https://www.glassworks.dev/frames/aqara-s1-plus/clarity-on-light.svg" height="30">
+      <img alt="Clarity" src="https://www.glassworks.dev/frames/aqara-s1-plus/clarity-on-light.svg" height="30">
     </picture>
   </a>
 </p>
@@ -51,7 +51,7 @@ A Glassworks **frame**: the device definition for the Aqara S1 Plus. Its data is
 
 **Status: beta.**
 
-The Clarity badge above is its performance grade ([docs/perf.md](../../docs/perf.md)), worked out on glassworks.dev from its measurements.
+The Clarity badge shows its Clarity grade ([docs/perf.md](../../docs/perf.md)) once one is published; none is yet.
 
 ## Hardware
 

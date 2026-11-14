@@ -35,7 +35,7 @@
   <a href="https://www.glassworks.dev/frames/lululemon-mirror">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="https://www.glassworks.dev/frames/lululemon-mirror/clarity-on-dark.svg">
-      <img alt="Clarity grade" src="https://www.glassworks.dev/frames/lululemon-mirror/clarity-on-light.svg" height="30">
+      <img alt="Clarity" src="https://www.glassworks.dev/frames/lululemon-mirror/clarity-on-light.svg" height="30">
     </picture>
   </a>
 </p>
@@ -48,7 +48,7 @@ A Glassworks **frame**: the device definition for the lululemon Studio Mirror. I
 
 The original version runs Android 6.0.1, and S1 Kiosk needs Android 8.0 or newer (`minSdk` 26), so today's app doesn't install on it. Why a newer Android is hard on this board: [mirror-android.md](research/mirror-android.md).
 
-The Clarity badge above is its performance grade ([docs/perf.md](../../docs/perf.md)), worked out on glassworks.dev from its measurements.
+The Clarity badge shows its Clarity grade ([docs/perf.md](../../docs/perf.md)) once one is published; none is yet.
 
 ## Hardware
 
