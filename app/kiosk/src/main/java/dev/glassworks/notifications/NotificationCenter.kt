@@ -133,6 +133,9 @@ class NotificationCenter(
         if (store.show(id) != null) changed()
     }
 
+    /** [close] was called: the pane stopped. */
+    val isClosed: Boolean get() = synchronized(lock) { closed }
+
     /**
      * Stops the timeout timer. Nothing is scheduled after this, and a timeout already firing does
      * nothing; the store keeps its entries.

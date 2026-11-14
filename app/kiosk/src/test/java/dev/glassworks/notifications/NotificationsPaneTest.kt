@@ -39,6 +39,7 @@ class NotificationsPaneTest {
     private val screen = mutableListOf<String>()
     private val played = mutableListOf<Sound>()
     private var silenced = 0
+    private var playFails = false
     private var t = 0L
     private val timers = mutableListOf<Triple<Long, () -> Unit, CompletableFuture<Unit>>>()
 
@@ -54,7 +55,7 @@ class NotificationsPaneTest {
             override fun hold() { screen += "hold" }
             override fun release() { screen += "release" }
         },
-        play = { s, done -> played += s; done() },
+        play = { s, done -> if (playFails) error("speaker failed"); played += s; done() },
         silence = { silenced++ },
         schedule = { ms, action -> CompletableFuture<Unit>().also { timers += Triple(ms, action, it) } as Future<*> },
         haBase = { "http://homeassistant.local:8123" },
@@ -208,5 +209,17 @@ class NotificationsPaneTest {
         center.close() // the switch's thread got there first
         assertFalse(hub.sendTest())
         assertTrue(hub.state.cards.isEmpty())
+    }
+
+    /** CodeRabbit on #228: only the center being closed means "off"; a failing output still gets through. */
+    @Test
+    fun aFailingOutputDuringATestIsNotOff() {
+        var revealed = false
+        hub.onReveal = { revealed = true }
+        pane.start()
+        playFails = true
+        val e = assertThrows(IllegalStateException::class.java) { hub.sendTest() }
+        assertEquals("speaker failed", e.message)
+        assertFalse("nothing revealed for a test that failed", revealed)
     }
 }

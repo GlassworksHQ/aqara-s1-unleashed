@@ -69,13 +69,16 @@ class NotificationsHub {
     /** The settings page's "Send a test notification". False while the pane is off, or stopping meanwhile. */
     fun sendTest(): Boolean {
         val c = center ?: return false
-        return try {
+        try {
             c.handle(TEST_MESSAGE, TEST_TITLE, TEST_DATA)
-            onReveal?.invoke()
-            true
         } catch (e: IllegalStateException) {
-            false // the pane stopped between reading the center and the call: as if it were off
+            // The pane stopped between reading the center and the call: as if it were off. Any other
+            // failure (a sound or screen output) is a real one, and goes to the caller.
+            if (c.isClosed) return false
+            throw e
         }
+        onReveal?.invoke()
+        return true
     }
 
     fun openList() { onOpenList?.invoke() }
