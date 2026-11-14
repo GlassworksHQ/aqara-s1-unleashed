@@ -1647,8 +1647,8 @@ def camera_cell(s_, b):
     open_ = sum(1 for r in runs if not r.get("timed_out") and G.camera_level(r) is None)
     note = (f", {failed} of {len(runs)} run(s) had a stream that showed no frame" if failed else "") \
         + (f", {late_note}" if late else "") \
-        + (f", stalls n/a in {na} of {len(runs)} run(s)" if na else "") \
-        + (f", the level not measured in {open_} of {len(runs)} run(s)" if open_ else "")
+        + (f", stalls n/a in {na} of {len(runs)} run(s)" if 0 < na < len(runs) else "") \
+        + (f", the level not measured in {open_} of {len(runs)} run(s)" if 0 < open_ < len(runs) else "")
     return (f"first frame {fmt(ff, ' ms')}, {fmt(med('shown_pct'), ' %')} shown, stalls {fmt(med('stall_total_ms'), ' ms')}, "
             f"{b.get('camera') or 'n/a'}{note}")
 

@@ -5,6 +5,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 import zipfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -653,6 +654,10 @@ class ReceiverSpanShort(unittest.TestCase):
         self.assertTrue(any("could reach the fluid bar" in x for x in reasons), reasons)
         self.assertIn("the level not measured in 1 of 2 run(s)", R.camera_cell(heavy, {"camera": None}))
 
+    def test_a_rubric_without_a_good_camera_gap_fails_clearly(self):
+        with mock.patch.object(G, "CAMERA_LEVELS", [lv for lv in G.CAMERA_LEVELS if lv["level"] != "good"]):
+            self.assertRaisesRegex(RuntimeError, "'good' level with max_gap_max_ms", R._good_max_gap_ms)
+
     def test_report_md_says_when_stalls_are_na_in_some_runs(self):
         """#265's verifier: s1rtc9's typical read "stalls 0 ms, n=2" with run 3 n/a."""
         typical = {"camera_runs": [R.camera_run(self.line([30043] * 4), "heavy"),
@@ -660,6 +665,10 @@ class ReceiverSpanShort(unittest.TestCase):
         cell = R.camera_cell(typical, {"camera": "good"})
         self.assertIn("stalls n/a in 1 of 2 run(s)", cell)
         self.assertIn("the level not measured in 1 of 2 run(s)", cell)
+        # Every run n/a: the cell's own "stalls n/a" says it, no "in 2 of 2" after it (#265's delta verifier).
+        every = R.camera_cell({"camera_runs": [R.camera_run(self.line([6821] * 4), "heavy")] * 2}, {"camera": None})
+        self.assertIn("stalls n/a", every)
+        self.assertNotIn("of 2 run(s)", every)
 
     def test_the_report_says_why(self):
         heavy = {"inp_ms": None, "scroll_bands": [], "updates_runs": [], "load_ms": None,

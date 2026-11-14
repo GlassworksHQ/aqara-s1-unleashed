@@ -419,8 +419,8 @@ hls.js on MSE, and each stream gets the hardware H.264 decoder (below).
   and the counts end at the last answer back, so a stall after it would go unseen (#255; on
   s1rtc9's heavy the counts covered 5.8 to 24.7 s of 30). Such a run's camera level isn't measured,
   and the report says so, unless its first frame or frames shown already fail every level: then
-  it is `slow`, as no stall could lift it. Counts that leave out 500 ms or less are graded, but
-  their stalls can be under-read by up to that much, so "fluid" holds its 1 s bar against the stalls
+  it is `slow`, as no stall could lift it. When the counts leave out 500 ms or less their stalls
+  count, but they can be under-read by up to that much, so "fluid" holds its 1 s bar against the stalls
   plus what was left out: 600 ms of stalls with 400 ms left out is not measured, with 399 ms it is
   fluid. report.md's camera cell says in how many runs the stalls were n/a or the level open.
 - **Gaps and stalls over HLS (the fallback, not graded)**: gaps over 500 ms between frames

@@ -4921,6 +4921,17 @@
     "uncovered_ms": 500.0
    },
    "level": "good"
+  },
+  {
+   "name": "701 ms of stalls and 300 ms left out: 1001 ms, over the bar, not measured",
+   "run": {
+    "first_frame_ms": 1200,
+    "shown_pct": 99.0,
+    "max_gap_ms": 701,
+    "stall_total_ms": 701,
+    "uncovered_ms": 300.0
+   },
+   "level": null
   }
  ]
 }
