@@ -3,7 +3,8 @@
 # /repo is the checkout (read-only). Builds an Android-like layout with mocks, then tests:
 #   s1kiosk_verify + make-bundle.py, s1kiosk_bundle.sh (install, --check, every refusal),
 #   the helper's loader (bundle helper, fallback, quick-exit marking, dev override),
-#   the helper v4 (off, firmware flashing + rollback + request guards, GBL checks, Zigbee stack).
+#   the helper v4 (off, firmware flashing + rollback + request guards, GBL checks, Zigbee stack),
+#   s1kiosk_update.sh (incl. a framework restart mid-install) and netwatch's ActivityManager check (#248).
 set -uo pipefail
 R=/repo; T=/t; TB=/tb
 PASS=0; FAILS=0
@@ -41,8 +42,24 @@ EOF
 w "$T/bin/pm" <<'EOF'
 #!/bin/sh
 case "$1" in
-  install) cat > /dev/null; echo 30300 > /t/pm-version; echo Success; exit 0 ;;
+  install) cat > /dev/null
+    # /t/pm-mode: fail = pm refuses; restart(-noup) = system_server dies mid-install (#248), with
+    # (without) the package committed first. The fake system_server is /t/bin/system_server.
+    # /t/pm-down-after: how many later pm calls fail while the framework is "down" (copied to /t/pm-down).
+    case "$(cat /t/pm-mode 2>/dev/null)" in
+      fail) echo "Failure [INSTALL_FAILED_TEST]"; exit 1 ;;
+      restart|restart-noup)
+        [ "$(cat /t/pm-mode)" = restart ] && echo 30300 > /t/pm-version
+        pkill -x system_server; (system_server 2000 >/dev/null 2>&1 &)
+        [ -f /t/pm-down-after ] && cp /t/pm-down-after /t/pm-down
+        echo "Exception occurred while executing: android.os.DeadObjectException"; exit 1 ;;
+    esac
+    echo 30300 > /t/pm-version; echo Success; exit 0 ;;
 esac
+if [ -s /t/pm-down ] && [ "$(cat /t/pm-down)" -gt 0 ]; then
+  echo $(( $(cat /t/pm-down) - 1 )) > /t/pm-down; echo "pm list" >> /t/pm-down.log
+  echo "cmd: Can't find service: package"; exit 20
+fi
 echo "package:sh.edm.s1kiosk.other versionCode:1 uid:10077"
 echo "package:sh.edm.s1kiosk versionCode:$(cat /t/pm-version 2>/dev/null || echo 30200) uid:10050"
 EOF
@@ -566,6 +583,101 @@ rm -f "$APP/files/update/pending.apk"; mkfifo "$APP/files/update/pending.apk"; c
 timeout 30 /system/bin/sh "$TB/s1kiosk_update.sh" >/dev/null 2>&1
 check "update service: a FIFO is refused, no hang" test $? != 124
 check "...with an error status" has "$(prop sys.s1kiosk.update.status)" "error"
+# A framework restart in the middle of the install (#248): pm fails, but the update may have gone in.
+cp /bin/sleep "$T/bin/system_server"
+upd() { # pm-mode: stage the APK, run the service, print its status
+  pkill -x system_server; (system_server 2000 >/dev/null 2>&1 &); sleep 0.2
+  rm -f "$APP/files/update/pending.apk"; printf 'PK-apk' > "$APP/files/update/pending.apk"; chown 10050 "$APP/files/update/pending.apk"
+  echo 30200 > "$T/pm-version"; echo "$1" > "$T/pm-mode"; rm -f "$T/pm-down"   # PackageManager up at the start
+  S1U_RESTART_WAIT=10 timeout 60 /system/bin/sh "$TB/s1kiosk_update.sh" >/dev/null 2>&1
+  prop sys.s1kiosk.update.status
+}
+check "pm fails, framework still up: an error, pm's reason" has "$(upd fail)" "error: pm install: Failure [INSTALL_FAILED_TEST]"
+check "framework restarted mid-install, package committed: ok" has "$(upd restart)" "ok: sh.edm.s1kiosk 30200 -> 30300"
+# PackageManager stays away for 2 calls after the restart: the service polls every 5 s (twice in its
+# S1U_RESTART_WAIT=10), then checks. Without the wait it would give up at the first call.
+echo 2 > "$T/pm-down-after"; : > "$T/pm-down.log"
+check "framework slow to come back: the service waits for PackageManager" has "$(upd restart)" "ok: sh.edm.s1kiosk 30200 -> 30300"
+check "...polling it while it is down" test "$(wc -l < "$T/pm-down.log")" = 2
+echo 1000 > "$T/pm-down-after"
+check "framework never comes back: an error after the wait (S1U_RESTART_WAIT=10)" has "$(upd restart)" "error: framework restarted mid-install, did not come back"
+rm -f "$T/pm-down-after" "$T/pm-down" "$T/pm-down.log"
+check "framework restarted, package not committed: an error that says so" has "$(upd restart-noup)" "error: framework restarted mid-install, not updated; pm install: Exc"
+check "...cut to what a property holds" test "$(prop sys.s1kiosk.update.status | wc -c)" -le 91
+rm -f "$T/pm-mode"; pkill -x system_server
+
+# --------------------------------------------------------------- ActivityManager watchdog (#248)
+echo "--- s1kiosk_netwatch.sh: ActivityManager"
+cp "$R/tools/root/s1kiosk_netwatch.sh" "$TB/"
+# dumpsys prints /t/lru (one "total non-act non-svc" line) as Android 10's header; none = no answer.
+# /t/lru-seq instead: one call per line, printed as is ("-" prints nothing), for odd outputs in turn.
+w "$T/bin/dumpsys" <<'EOF2'
+#!/bin/sh
+[ "$1 $2" = "activity processes" ] || exit 1
+if [ -f /t/lru-seq ]; then
+  l=$(head -n 1 /t/lru-seq); sed -i 1d /t/lru-seq
+  [ "$l" = - ] || printf '%s\n' "$l"; exit 0
+fi
+[ -s /t/lru ] || exit 1
+read -r n a s < /t/lru
+echo "ACTIVITY MANAGER RUNNING PROCESSES (dumpsys activity processes)"
+echo "  Process LRU list (sorted by oom_adj, $n total, non-act at $a, non-svc at $s):"
+EOF2
+amw() { # lru-line loops: run the watchdog for <loops> checks with a fresh system_server; print its pid
+  pkill -x system_server; (system_server 2000 >/dev/null 2>&1 &); sleep 0.2
+  rm -f "$T/props/sys.s1kiosk.am.status" "$T/props/sys.s1kiosk.am.restarts"
+  if [ -n "$1" ]; then echo "$1" > "$T/lru"; else : > "$T/lru"; fi
+  pidof system_server > "$T/ss-pid"
+  S1N_ONCE=$2 S1N_SLEEP=0 timeout 60 /system/bin/sh "$TB/s1kiosk_netwatch.sh" >/dev/null 2>&1
+}
+alive() { kill -0 "$(cat "$T/ss-pid")" 2>/dev/null; }
+amw "27 3 3" 3
+check "healthy LRU starts: reported" test "$(prop sys.s1kiosk.am.status)" = "ok 24 24 of 27"
+check "...system_server left alone" alive
+amw "18 19 19" 1
+check "one broken read: counted" has "$(prop sys.s1kiosk.am.status)" "broken: LRU starts -1 -1 of 18 (1/2)"
+check "...but nothing killed yet" alive
+amw "18 19 19" 2
+check "two broken reads in a row: framework restarted" sh -c '! kill -0 "$(cat /t/ss-pid)" 2>/dev/null'
+check "...status says so" has "$(prop sys.s1kiosk.am.status)" "restarted the framework at uptime"
+check "...and counts it" has "$(prop sys.s1kiosk.am.restarts)" "1 "
+amw "18 18 19" 4
+check "only the service start broken also counts, and one restart per cooldown" has "$(prop sys.s1kiosk.am.restarts)" "1 "
+check "...the rest waits for the cooldown" has "$(prop sys.s1kiosk.am.status)" "in the cooldown"
+amw "" 2
+check "no answer from dumpsys: nothing killed" alive
+check "...and said" test "$(prop sys.s1kiosk.am.status)" = "no answer from dumpsys"
+(system_server 2000 >/dev/null 2>&1 &); sleep 0.2
+echo "18 19 19" > "$T/lru"; S1N_ONCE=2 S1N_SLEEP=0 timeout 60 /system/bin/sh "$TB/s1kiosk_netwatch.sh" >/dev/null 2>&1
+check "two system_server pids: nobody is killed" test "$(pidof system_server | wc -w)" = 2
+pkill -x system_server; (system_server 2000 >/dev/null 2>&1 &); sleep 0.2; pidof system_server > "$T/ss-pid"
+echo "18 19 19" > "$T/lru"; rm -f "$T/props/sys.s1kiosk.am.restarts"
+S1N_AM_DRY=1 S1N_ONCE=2 S1N_SLEEP=0 timeout 60 /system/bin/sh "$TB/s1kiosk_netwatch.sh" >/dev/null 2>&1
+check "dry run: says it would restart" has "$(prop sys.s1kiosk.am.status)" "would restart the framework at uptime"
+check "...and kills nothing" alive
+check "...nor counts a restart" test -z "$(prop sys.s1kiosk.am.restarts)"
+# Odd dumpsys output never counts as broken, and resets the count of broken reads.
+H='  Process LRU list (sorted by oom_adj,'
+dseq() { # dumpsys outputs, one per check: run that many checks with a fresh system_server
+  pkill -x system_server; (system_server 2000 >/dev/null 2>&1 &); sleep 0.2; pidof system_server > "$T/ss-pid"
+  rm -f "$T/props/sys.s1kiosk.am.status" "$T/props/sys.s1kiosk.am.restarts" "$T/lru"
+  printf '%s\n' "$@" > "$T/lru-seq"
+  S1N_ONCE=$# S1N_SLEEP=0 timeout 60 /system/bin/sh "$TB/s1kiosk_netwatch.sh" >/dev/null 2>&1
+}
+dseq "$H 18 total, non-act at" "$H 18 total, non-act at"
+check "a truncated header twice: nothing killed" alive
+check "...reported as no answer" test "$(prop sys.s1kiosk.am.status)" = "no answer from dumpsys"
+dseq "Failed to write while dumping service activity: Broken pipe" "Failed to write while dumping service activity: Broken pipe"
+check "only 'Failed to write while dumping', twice: nothing killed" alive
+dseq "$H 27 total, non-act at 3, non-svc at 3):" "$H 27 total, non-act at"
+check "healthy, then truncated: nothing killed" alive
+check "...the truncated read reported as no answer" test "$(prop sys.s1kiosk.am.status)" = "no answer from dumpsys"
+dseq "$H 18 total, non-act at 19, non-svc at 19):" "$H 18 total, non-act" "$H 18 total, non-act at 19, non-svc at 19):"
+check "broken, truncated, broken: the count starts again, nothing killed" alive
+check "...one broken read counted" has "$(prop sys.s1kiosk.am.status)" "(1/2)"
+dseq "$H 18 total, non-act at 19, non-svc at 19):" "$H 18 total, non-act at 19, non-svc at 19):"
+check "...and the same header printed as is, twice: killed (the seq mock itself works)" sh -c '! kill -0 "$(cat /t/ss-pid)" 2>/dev/null'
+pkill -x system_server; rm -f "$T/lru" "$T/lru-seq" "$T/bin/dumpsys"
 
 # ---------------------------------------------------------------------------------- time zone
 echo "--- time zone"
