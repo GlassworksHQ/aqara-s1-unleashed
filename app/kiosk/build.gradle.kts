@@ -117,6 +117,7 @@ dependencies {
     // Sendspin's encryption also uses.
     implementation(project(":esphome-api-android")) // brings :esphome-api
     implementation(project(":improv"))
+    implementation(project(":bluetooth-proxy")) // the Bluetooth proxy pane's engine (#121)
     // Audio playback (TTS, announcements, media player): streams over HTTP in-process, avoiding the
     // vendor CedarX HTTP stack. Same version GeckoView already ships.
     implementation("androidx.media3:media3-exoplayer:1.11.1")

@@ -70,6 +70,13 @@ below as the release notes.
   Diagnostic section.
 
 ### Added
+- **The panel can be a Bluetooth proxy for Home Assistant.** Turn on *Bluetooth proxy* in the
+  panel's settings or on setup's Panes step, and Home Assistant finds it by itself and hears the
+  Bluetooth thermometers, plant sensors and tags near the panel. It only listens: devices that need a
+  connection, like locks, still need an ESP32 proxy. Off by default. It never logs or keeps the
+  addresses it hears.
+- **Setup's Panes step shows three cards to a row from five panes on**, so Continue stays on the
+  screen.
 - **Turn any pane off, and back on, without a restart.** Voice, music, the wall base, the time zone
   and diagnostics each have an on/off: at the top of the pane's page in the panel's settings, in
   Home Assistant (new switches Voice, Wall base, Keep time zone and Diagnostics, off on the device

@@ -264,7 +264,7 @@ class KioskPrefs(private val context: Context) : ScreenSettings {
          */
         val PANE_FILES = mapOf(
             "sendspin" to "kiosk", "assist" to "kiosk", "wall-base" to "kiosk", "radio" to "kiosk",
-            "time-zone" to "kiosk", "diagnostics" to "kiosk",
+            "time-zone" to "kiosk", "diagnostics" to "kiosk", "bluetooth-proxy" to "kiosk",
         )
 
         /** Decodes a base64 API key; null unless it is exactly 32 bytes. */

@@ -170,6 +170,7 @@ $A --es wake_model okay_nabu --ef wake_threshold 0.9 --ef mic_gain 2.0 --ez mic_
 $A --es api_key $(openssl rand -base64 32) --ez api_encryption true   # manual ESPHome API key (HA normally provisions one)
 $A --ez voice_enabled false           # each pane on/off, applied live (default on): voice_enabled, sendspin_enabled,
                                       #   wall_base_enabled, time_zone_enabled, diagnostics_enabled
+$A --ez bluetooth_proxy_enabled true  # the Bluetooth proxy on/off (default off)
 $A --ez sendspin_enabled false        # Music Assistant player (Sendspin) off/on (default on)
 $A --es sendspin_server 192.168.1.100 # Sendspin server: auto (default: mDNS, else <HA host>:8927) or host[:port][/path] / ws://
 $A --ez sendspin_unpaired_access true # let a server play without pairing (guest mode; default off)
