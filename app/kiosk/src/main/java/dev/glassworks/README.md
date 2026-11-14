@@ -346,7 +346,11 @@ why, without a switch.
   (`GlassworksRuntime.panes`). Show what Home Assistant has for the pane, and the controls it has there.
 - A pane with no section of its own gets one built from its entities (`inHomeAssistant`): each name
   and its state as Home Assistant shows it (`ApiEntity.shownState`). Entities off by default in HA are
-  dimmed. A page of its own can end with the same list.
+  dimmed.
+- A page of its own says which of the pane's entities it covers (`SettingsSection.covers`: it shows
+  them, or leaves them out on purpose). The core then ends the page with "In Home Assistant" for the
+  other entities, or adds nothing when none is left, so no entity is listed twice. A page that leaves
+  `covers` null gets nothing added.
 - While a pane's `switch` is off, its page is the switch's `offNote` (what being off means, in a
   sentence) and its entities, each `Unavailable`. Its own sections wait until it is on.
 - Without a running device, the page says so (`NOT_RUNNING`).

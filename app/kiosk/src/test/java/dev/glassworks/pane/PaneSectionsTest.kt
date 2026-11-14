@@ -92,6 +92,15 @@ class PaneSectionsTest {
         assertEquals(2, rows(s).size)
     }
 
+    @Test fun aPageListsOnlyTheEntitiesItDoesNotCoverItself() {
+        // Root, #226: a page that shows some entities (the Bluetooth proxy's) must not list them again.
+        fun page(covers: Set<String>?) = paneSections(listOf(definition { listOf(SettingsSection("lamp", "Lamp", listOf(SettingsItem.Note { "power" }), covers = covers)) })) { pane }.single()
+        assertEquals(listOf("Lamp firmware"), rows(page(setOf("lamp_power"))).map { it.first })
+        assertEquals("all covered: no list", 1, page(setOf("lamp_power", "lamp_firmware")).items.size)
+        assertEquals("a page that says nothing gets nothing added", 1, page(null).items.size)
+        assertEquals("covers nothing: all of them", listOf("Lamp power", "Lamp firmware"), rows(page(emptySet())).map { it.first })
+    }
+
     @Test fun aPaneWithNothingToShowAndNoSwitchHasNoPage() {
         val bare = object : PaneDefinition { override val id = "bare" }
         assertEquals(emptyList<SettingsSection>(), paneSections(listOf(bare)) { null })

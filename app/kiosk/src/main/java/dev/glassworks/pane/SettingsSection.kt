@@ -37,6 +37,13 @@ class SettingsSection(
      * which the shell builds again when the device restarts. Another one draws the page again.
      */
     val source: Any? = null,
+    /**
+     * The object ids of the pane's entities this page already covers: it shows them, or leaves them out
+     * on purpose. Set, and the core ends the page with "In Home Assistant" for the pane's other
+     * entities, or adds nothing when none is left, so no entity is listed twice (#212). Null (the
+     * default): the core adds nothing to this page.
+     */
+    val covers: Set<String>? = null,
 )
 
 /** A section's dot in the nav, after its name. Status colours mean status only: green, amber, rose. */
@@ -47,8 +54,9 @@ enum class SettingsStatus { OK, WORKING, PROBLEM }
  * its on/off as the section's [SettingsSection.master] when it has none: its setup card, else its
  * [PaneDefinition.switch]. [running] gives the pane the shell built, or null while the panel's device
  * isn't running. A pane with no section of its own gets one with its entities ([inHomeAssistant]). A
- * pane whose [PaneDefinition.switch] is off shows what that means ([PaneSwitch.offNote]) and its
- * entities, unavailable. Definition order.
+ * page of its own that says what it covers ([SettingsSection.covers]) ends with the pane's other
+ * entities. A pane whose [PaneDefinition.switch] is off shows what that means ([PaneSwitch.offNote])
+ * and its entities, unavailable. Definition order.
  */
 fun paneSections(definitions: List<PaneDefinition>, running: (String) -> Pane? = { null }): List<SettingsSection> = definitions.flatMap { d ->
     val choice = d.setupChoice ?: d.switch?.choice()
@@ -62,8 +70,17 @@ fun paneSections(definitions: List<PaneDefinition>, running: (String) -> Pane? =
     val off = d.switch?.takeIf { !it.on }
     val own = if (off != null) emptyList() else d.settings(pane)
     when {
-        own.isNotEmpty() -> own.mapIndexed { i, s ->
-            SettingsSection(s.id, s.title, s.items, s.heading, if (i > 0 || s.master != null) s.master else master, s.status, s.unavailable, source = pane)
+        own.isNotEmpty() -> {
+            // The pane's entities no page covers, once, at the end of the first page that takes part.
+            val covered = own.mapNotNull { it.covers }.flatten().toSet()
+            val rest = inHomeAssistant(pane) { it.objectId !in covered }
+            val first = own.indexOfFirst { it.covers != null }
+            own.mapIndexed { i, s ->
+                SettingsSection(
+                    s.id, s.title, if (i == first && rest != null) s.items + rest else s.items, s.heading,
+                    if (i > 0 || s.master != null) s.master else master, s.status, s.unavailable, source = pane, covers = s.covers,
+                )
+            }
         }
         choice != null -> listOf(SettingsSection(
             d.id, choice.title,

@@ -25,7 +25,8 @@ class DiagnosticsDefinition(file: SharedPreferences) : PaneDefinition {
     /** Six tiles with their last hour, read again while the page is open, and why the app last restarted (#212). */
     override fun settings(running: Pane?): List<SettingsSection> {
         val p = running as? DiagnosticsPane ?: return emptyList()
-        return listOf(SettingsSection(id, "Diagnostics", listOf(
+        // The tiles and the footer cover every entity: nothing to list again.
+        return listOf(SettingsSection(id, "Diagnostics", covers = p.entities().map { it.objectId }.toSet(), items = listOf(
             SettingsItem.Tiles(3) { DiagnosticsPage.tiles(p::current, p::lastHour, p.lastSample, SystemClock.elapsedRealtime(), p.hasTemperature) },
             SettingsItem.Note { DiagnosticsPage.footer(p.lastRestartReason, p.lastSample?.contentProcesses) },
         )))

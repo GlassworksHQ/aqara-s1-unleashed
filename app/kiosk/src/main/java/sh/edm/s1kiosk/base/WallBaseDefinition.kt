@@ -7,7 +7,6 @@ import dev.glassworks.pane.PaneDefinition
 import dev.glassworks.pane.PaneSwitch
 import dev.glassworks.pane.SettingsItem
 import dev.glassworks.pane.SettingsSection
-import dev.glassworks.pane.inHomeAssistant
 
 /** The wall base ([WallBasePane]) for the whole process: its on/off and adb extras (frames/aqara-s1-plus/research/bases.md). */
 class WallBaseDefinition(file: SharedPreferences) : PaneDefinition {
@@ -35,7 +34,6 @@ class WallBaseDefinition(file: SharedPreferences) : PaneDefinition {
         val items = if (layout == null || !layout.attached) listOfNotNull(
             status,
             SettingsItem.Native("wall-base-none") { host -> NoBaseView(host.context) },
-            inHomeAssistant(p),
         ) else listOfNotNull(
             status,
             SettingsItem.Tiles(4) { p.tracker.current()?.takeIf { it.attached }?.let { l -> WallBasePage.strip(l, p.tracker.firmware(), p.tracker.protection(), p.tracker.power()) }.orEmpty() },
@@ -43,10 +41,11 @@ class WallBaseDefinition(file: SharedPreferences) : PaneDefinition {
             if (layout.kind == BaseKind.SWITCH && layout.channels.isNotEmpty()) {
                 SettingsItem.Native("wall-base-relays-${System.identityHashCode(p)}-${layout.channels}") { host -> RelaysView(host.context, p, layout.channels) }
             } else null,
-            // What the tiles and cards don't show (Aqara's cloud), so the page has all Home Assistant has.
-            inHomeAssistant(p, only = { !it.objectId.startsWith(BaseEntities.BASE) }),
         )
-        return listOf(SettingsSection(id, "Wall base", items))
+        // A mounted base's tiles and cards cover its entities, energy too: it stays hidden until #216 settles
+        // its unit. The core lists the rest (Aqara's cloud), so the page has all Home Assistant has.
+        val covers = if (layout == null || !layout.attached) emptySet() else BaseEntities.objectIds(layout).toSet()
+        return listOf(SettingsSection(id, "Wall base", items, covers = covers))
     }
 
     override val extras = listOf(

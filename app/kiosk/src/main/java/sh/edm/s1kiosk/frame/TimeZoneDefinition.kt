@@ -22,7 +22,7 @@ class TimeZoneDefinition(file: SharedPreferences) : PaneDefinition {
     /** The zone, picked from a list or Home Assistant's, and whether the panel keeps it (#212). */
     override fun settings(running: Pane?): List<SettingsSection> {
         val p = running as? TimeZonePane ?: return emptyList()
-        return listOf(SettingsSection(id, "Time zone", listOf(
+        return listOf(SettingsSection(id, "Time zone", covers = setOf("time_zone", "time_zone_status"), items = listOf(
             SettingsItem.Native("time-zone-${System.identityHashCode(p)}") { host ->
                 TimeZoneView(host, p, TimeZoneChoices(TimeZone.getAvailableIDs().toList()) { id -> android.icu.util.TimeZone.getCanonicalID(id) ?: id })
             },

@@ -31,7 +31,9 @@ class AssistDefinition(file: SharedPreferences) : PaneDefinition {
     override fun settings(running: Pane?): List<SettingsSection> {
         val p = running as? AssistPane ?: return emptyList()
         fun done(d: (String?) -> Unit) = d(null)
-        return listOf(SettingsSection(id, "Voice", listOf(
+        // Its controls cover the pane's entities; a new one would be listed after them.
+        val covers = setOf("mute_microphone", "wake_sound", "voice_overlay", "mic_gain", "wake_word_threshold")
+        return listOf(SettingsSection(id, "Voice", covers = covers, items = listOf(
             SettingsItem.Status(text = { status(prefs.micMuted, prefs.wakeWord) }, ok = { !prefs.micMuted && prefs.wakeWord.isNotEmpty() }),
             SettingsItem.Group("Listening", listOf(
                 SettingsItem.Choice("Wake word", { prefs.wakeWord }, { wakeWords(prefs.wakeWord) }) { v, d -> p.useWakeWord(v); done(d) },
