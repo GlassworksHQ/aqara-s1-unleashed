@@ -5,6 +5,9 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.junit.Assert.assertSame
+import sh.edm.esphome.ApiServer
+import sh.edm.esphome.DeviceIdentity
 import sh.edm.esphome.RawAdvertisement
 import java.util.PriorityQueue
 
@@ -62,11 +65,18 @@ internal class FakeScanner : BleScanner {
     fun hear(n: Int) = listener!!.onAdvertisement(0xC0FFEE000000L + n, -50 - n, byteArrayOf(2, 1, 6, 0, 0, 0))
 }
 
+private val IDENTITY = DeviceIdentity(
+    name = "test-panel", friendlyName = "Test Panel", macAddress = "02:00:00:00:00:01",
+    esphomeVersion = "2026.10.2", compilationTime = "test", manufacturer = "Test", model = "JVM", voiceFeatures = 0,
+)
+
 class BluetoothProxyEngineTest {
     private val loop = ManualLoop()
     private val scanner = FakeScanner()
     private val sent = ArrayList<List<RawAdvertisement>>()
-    private val engine = BluetoothProxyEngine(scanner, { sent += it; true }, ScanPower.LOW_LATENCY, loop, ScanSchedule.Limits())
+    private val engine = BluetoothProxyEngine(
+        scanner, { sent += it; true }, ScanPower.LOW_LATENCY, loop, ScanSchedule.Limits(), detach = { scanner.calls += "detach" },
+    )
 
     private fun subscribe(on: Boolean) { engine.onSubscribed(on); loop.advanceBy(0) }
 
@@ -165,9 +175,9 @@ class BluetoothProxyEngineTest {
         subscribe(true)
         engine.close()
         loop.advanceBy(0)
-        assertEquals(listOf("start LOW_LATENCY", "stop", "release"), scanner.calls)
+        assertEquals("out of the server before anything stops", listOf("start LOW_LATENCY", "detach", "stop", "release"), scanner.calls)
         subscribe(true)
-        assertEquals("stays closed", 3, scanner.calls.size)
+        assertEquals("stays closed", 4, scanner.calls.size)
     }
 
     @Test fun closeReleasesTheScannerAfterAFailureToo() {
@@ -177,7 +187,23 @@ class BluetoothProxyEngineTest {
         loop.advanceBy(0)
         engine.close()
         loop.advanceBy(0)
-        assertEquals(listOf("start LOW_LATENCY", "release"), scanner.calls)
+        assertEquals(listOf("start LOW_LATENCY", "detach", "release"), scanner.calls)
+    }
+
+    @Test fun closeTakesTheEngineOutOfItsServerButNotAReplacement() {
+        val server = ApiServer(0, { IDENTITY }, emptyList(), keys = null)
+        val proxy = BluetoothProxyEngine(server, FakeScanner())
+        server.bluetooth = proxy
+        proxy.close()
+        assertNull("no later subscription reaches the closed engine", server.bluetooth)
+
+        val replaced = BluetoothProxyEngine(server, FakeScanner())
+        server.bluetooth = replaced
+        val newer = BluetoothProxyEngine(server, FakeScanner())
+        server.bluetooth = newer
+        replaced.close()
+        assertSame("the engine that replaced it stays", newer, server.bluetooth)
+        newer.close()
     }
 
     @Test fun adStructuresDropAndroidsPaddingAndKeepWholeStructures() {

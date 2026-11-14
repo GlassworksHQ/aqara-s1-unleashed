@@ -59,7 +59,7 @@ class BluetoothProxyHomeAssistantTest {
         val radio = RadioWithNeighbours()
         val engine = BluetoothProxyEngine(
             radio, server::sendBluetoothAdvertisements, ScanPower.LOW_LATENCY,
-            BluetoothProxyEngine.ExecutorLoop(), ScanSchedule.Limits(lingerMs = 300),
+            BluetoothProxyEngine.ExecutorLoop(), ScanSchedule.Limits(lingerMs = 300), { server.removeBluetooth(it) },
         )
         server.bluetooth = engine
         server.start()
@@ -74,7 +74,8 @@ class BluetoothProxyHomeAssistantTest {
             assertEquals("client failed:\n$out", 0, proc.exitValue())
             val r = JSONObject(out.lines().first { it.startsWith("RESULT ") }.removePrefix("RESULT "))
 
-            assertTrue("HA adds a Bluetooth scanner", r.getBoolean("scanner"))
+            assertTrue("HA connects a Bluetooth scanner (any flag does)", r.getBoolean("scanner"))
+            assertTrue("PASSIVE_SCAN set, as on an ESPHome proxy", r.getBoolean("passive_scan"))
             assertTrue("and subscribes to raw advertisements", r.getBoolean("raw"))
             assertFalse("passive: not connectable", r.getBoolean("connectable"))
             assertFalse("no scanner state or mode (Android can't switch to a passive scan)", r.getBoolean("state_and_mode"))

@@ -51,15 +51,14 @@ plant sensors, presence tags). GATT connections (locks, devices that need one) c
 
 ```kotlin
 val server = ApiServer(ApiServer.DEFAULT_PORT, { identity }, entities, keys)
-val proxy = BluetoothProxyEngine(AndroidBleScanner(context), server::sendBluetoothAdvertisements)
-server.bluetooth = proxy // DeviceInfo now says "passive scan, raw advertisements"
+val proxy = BluetoothProxyEngine(server, AndroidBleScanner(context))
+server.bluetooth = proxy // DeviceInfo now carries proxy flags, so HA adds a Bluetooth scanner
 server.start()
 
 // later, e.g. on a settings page or for a diagnostic entity:
 val s = proxy.status // subscribed, scanning, failure, advertisementsPerMinute
 
-// to turn it off: take it out, then reconnect clients so they reread DeviceInfo
-server.bluetooth = null
+// to turn it off: close() takes it out of the server too. Clients see it gone once they reconnect.
 proxy.close()
 ```
 

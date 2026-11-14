@@ -4,6 +4,7 @@ import org.junit.After
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.net.InetAddress
@@ -111,6 +112,18 @@ class BluetoothProxyServerTest {
             c.subscribe()
             assertEquals("a later subscription reaches the handler set now", listOf(true, false, true), calls)
         }
+    }
+
+    @Test fun removeBluetoothRemovesOnlyTheHandlerItNames() {
+        server.bluetooth = handler
+        val other = object : BluetoothProxyHandler {
+            override val featureFlags = 0
+            override fun onSubscribed(subscribed: Boolean) = Unit
+        }
+        assertFalse(server.removeBluetooth(other))
+        assertSame(handler, server.bluetooth)
+        assertTrue(server.removeBluetooth(handler))
+        assertEquals(null, server.bluetooth)
     }
 
     @Test fun theNewestSubscriberWinsAndTheProxyStopsWhenItLeaves() {

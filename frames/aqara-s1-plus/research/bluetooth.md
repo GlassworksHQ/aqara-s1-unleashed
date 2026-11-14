@@ -6,7 +6,7 @@ panel plan in #121 does that, and measures Wi-Fi and Sendspin with scanning on a
 
 Device: Aqara Panel Hub S1 Plus, Android 10, S1 Kiosk 0.4.3. Tools: adb (read-only), AOSP
 `packages/apps/Bluetooth` at `android10-release`, aioesphomeapi 46.25.0, ESPHome 2026.10.2,
-bleak-esphome `main` (2026-09-12).
+bleak-esphome 4.0.0 and `main` (2026-09-12), HA 2026.11.1.
 
 ## Question
 
@@ -78,7 +78,8 @@ that ships we need to know:
    | What | Source |
    |---|---|
    | `DeviceInfoResponse.bluetooth_proxy_feature_flags` = field 15; `bluetooth_mac_address` = 18 | aioesphomeapi 46.25.0 `api.proto` |
-   | HA adds a scanner for `PASSIVE_SCAN` (bit 0), subscribes to raw advertisements for `RAW_ADVERTISEMENTS` (bit 5), makes it connectable for `ACTIVE_CONNECTIONS` (bit 1). The scanner's source is `bluetooth_mac_address`, else `mac_address` | bleak-esphome `connect.py` `connect_scanner` |
+   | HA connects a Bluetooth scanner for a device with *any* proxy flag set. `PASSIVE_SCAN` (bit 0) isn't read; ESPHome sets it on every proxy, and so do we | HA 2026.11.1 `esphome/manager.py` line 808 |
+   | Then it subscribes to raw advertisements for `RAW_ADVERTISEMENTS` (bit 5) and makes the scanner connectable for `ACTIVE_CONNECTIONS` (bit 1). The scanner's source is `bluetooth_mac_address`, else `mac_address` | bleak-esphome 4.0.0 (HA 2026.11.1 pins it) `connect.py` `connect_scanner` |
    | One advertisement subscriber at a time; a new one replaces the old | ESPHome 2026.10.2 `bluetooth_proxy.cpp` `subscribe_api_connection` |
    | Batches of 16 (`BLUETOOTH_PROXY_ADVERTISEMENT_BATCH_SIZE`), partial batches every other 100 ms tick on Wi-Fi | ESPHome 2026.10.2 `bluetooth_proxy/__init__.py`, `bluetooth_proxy.cpp` `loop` |
    | A raw advertisement holds at most 62 bytes of AD data | `api.proto` `BluetoothLERawAdvertisement.data` `fixed_array_size = 62` |

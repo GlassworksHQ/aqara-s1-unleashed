@@ -401,8 +401,19 @@ class ApiServer(
 
     /** Sends one batch of advertisements to the client that subscribed to them. False if none did. */
     fun sendBluetoothAdvertisements(batch: List<RawAdvertisement>): Boolean {
-        val c = bluetoothConn ?: return false
-        return c.send(listOf(Frame(BluetoothMsg.LE_RAW_ADVERTISEMENTS_RESPONSE, rawAdvertisements(batch).toByteArray())))
+        val frame = Frame(BluetoothMsg.LE_RAW_ADVERTISEMENTS_RESPONSE, rawAdvertisements(batch).toByteArray())
+        // Under the lock, so a batch never reaches a client another one has just replaced. send only queues.
+        synchronized(bluetoothLock) {
+            val c = bluetoothConn ?: return false
+            return c.send(listOf(frame))
+        }
+    }
+
+    /** Takes [handler] out if it is still [bluetooth] (not if another one replaced it). True if it was. */
+    fun removeBluetooth(handler: BluetoothProxyHandler): Boolean = synchronized(bluetoothLock) {
+        if (bluetooth !== handler) return false
+        bluetooth = null
+        true
     }
 
     private fun subscribeBluetooth(c: Connection) {

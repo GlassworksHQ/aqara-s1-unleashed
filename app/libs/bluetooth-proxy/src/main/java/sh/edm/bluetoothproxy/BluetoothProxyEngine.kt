@@ -1,5 +1,6 @@
 package sh.edm.bluetoothproxy
 
+import sh.edm.esphome.ApiServer
 import sh.edm.esphome.BluetoothProxyFeature
 import sh.edm.esphome.BluetoothProxyHandler
 import sh.edm.esphome.RawAdvertisement
@@ -19,9 +20,9 @@ data class ProxyStatus(
 )
 
 /**
- * A passive ESPHome Bluetooth proxy: scans while a client is subscribed, and forwards what it hears
- * in batches, as ESPHome's bluetooth_proxy does. Set it as [sh.edm.esphome.ApiServer.bluetooth],
- * with [send] = `server::sendBluetoothAdvertisements`.
+ * A passive ESPHome Bluetooth proxy for one [ApiServer]: scans while a client is subscribed, and
+ * forwards what it hears in batches, as ESPHome's bluetooth_proxy does. Set it as
+ * [ApiServer.bluetooth] to turn it on; [close] takes it out of the server again.
  *
  * Every state change runs on one thread ([loop]), so the scanner is only ever started and stopped
  * from there. Addresses are never logged.
@@ -32,12 +33,14 @@ class BluetoothProxyEngine internal constructor(
     private val power: ScanPower,
     private val loop: Loop,
     limits: ScanSchedule.Limits,
+    /** Takes this engine out of its server, if it is still in. */
+    private val detach: (BluetoothProxyEngine) -> Unit,
 ) : BluetoothProxyHandler {
     constructor(
+        server: ApiServer,
         scanner: BleScanner,
-        send: (List<RawAdvertisement>) -> Boolean,
         power: ScanPower = ScanPower.LOW_LATENCY,
-    ) : this(scanner, send, power, ExecutorLoop(), ScanSchedule.Limits())
+    ) : this(scanner, server::sendBluetoothAdvertisements, power, ExecutorLoop(), ScanSchedule.Limits(), { server.removeBluetooth(it) })
 
     companion object {
         /** A partial batch waits this long: ESPHome flushes every other 100 ms tick on Wi-Fi. */
@@ -122,8 +125,12 @@ class BluetoothProxyEngine internal constructor(
         reconcile()
     }
 
-    /** Stops scanning for good. Take the engine out of the server first. */
+    /**
+     * Stops scanning for good. Takes the engine out of its server first, so no subscription can reach
+     * a closed engine. Connected clients see the proxy gone once they reconnect and reread DeviceInfo.
+     */
     fun close() {
+        detach(this)
         loop.execute {
             closed = true
             wake?.invoke()

@@ -14,13 +14,12 @@ import sh.edm.esphome.NoiseKeys
 private object ReadmeExamples {
     fun use(context: Context, identity: DeviceIdentity, entities: List<ApiEntity>, keys: NoiseKeys) {
         val server = ApiServer(ApiServer.DEFAULT_PORT, { identity }, entities, keys)
-        val proxy = BluetoothProxyEngine(AndroidBleScanner(context), server::sendBluetoothAdvertisements)
+        val proxy = BluetoothProxyEngine(server, AndroidBleScanner(context))
         server.bluetooth = proxy
         server.start()
 
         val s = proxy.status
 
-        server.bluetooth = null
         proxy.close()
 
         val why: ScanFailure? = AndroidBleScanner(context).unavailable()

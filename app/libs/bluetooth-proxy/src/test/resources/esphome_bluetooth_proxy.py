@@ -1,7 +1,7 @@
 """Home Assistant's side of BluetoothProxyHomeAssistantTest: aioesphomeapi, the version Home Assistant
-pins, reads the device info and decides on a Bluetooth scanner as bleak-esphome connect.py
-(connect_scanner) does for HA's esphome integration, subscribes to raw advertisements and collects
-<count> of them, then disconnects.
+pins, reads the device info and decides on a Bluetooth scanner as HA's esphome integration does
+(manager.py: any flag connects one; bleak-esphome connect.py connect_scanner: raw advertisements,
+connectable), subscribes to raw advertisements and collects <count> of them, then disconnects.
 Usage: esphome_bluetooth_proxy.py <port> <count>; prints RESULT {json}."""
 import asyncio
 import json
@@ -18,7 +18,8 @@ async def main(port: int, count: int) -> None:
     flags = info.bluetooth_proxy_feature_flags_compat(cli.api_version)
     out = {
         "source": info.bluetooth_mac_address or info.mac_address,
-        "scanner": bool(flags & BluetoothProxyFeature.PASSIVE_SCAN),
+        "scanner": bool(flags),
+        "passive_scan": bool(flags & BluetoothProxyFeature.PASSIVE_SCAN),
         "raw": bool(flags & BluetoothProxyFeature.RAW_ADVERTISEMENTS),
         "connectable": bool(flags & BluetoothProxyFeature.ACTIVE_CONNECTIONS),
         "state_and_mode": bool(flags & BluetoothProxyFeature.FEATURE_STATE_AND_MODE),

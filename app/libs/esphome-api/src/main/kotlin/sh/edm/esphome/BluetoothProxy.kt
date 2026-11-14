@@ -12,9 +12,11 @@ object BluetoothMsg {
 
 /**
  * `BluetoothProxyFeature` (aioesphomeapi model.py), sent as `DeviceInfoResponse`
- * `bluetooth_proxy_feature_flags` (field 15). Home Assistant (bleak-esphome connect.py) adds a
- * scanner for a device with [PASSIVE_SCAN], subscribes to raw advertisements with
- * [RAW_ADVERTISEMENTS], and makes it connectable with [ACTIVE_CONNECTIONS].
+ * `bluetooth_proxy_feature_flags` (field 15). Home Assistant 2026.11 connects a Bluetooth scanner
+ * for a device with any flag set (esphome manager.py). bleak-esphome 4.0.0 (connect.py
+ * `connect_scanner`) then subscribes to raw advertisements with [RAW_ADVERTISEMENTS] and makes the
+ * scanner connectable with [ACTIVE_CONNECTIONS]. Nothing there reads [PASSIVE_SCAN]; ESPHome always
+ * sets it on a proxy (bluetooth_proxy.h), and so does this one.
  */
 object BluetoothProxyFeature {
     const val PASSIVE_SCAN = 1 shl 0
