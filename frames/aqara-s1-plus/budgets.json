@@ -52,11 +52,9 @@
       "size_max_bytes": 100000
     },
     "bluetooth-proxy": {
-      "switch": "bluetooth_proxy_enabled",
-      "state": "pane:bluetooth-proxy",
-      "ram_pss_max_kb": 16384,
+      "not_switched": "it scans only while Home Assistant listens, and Clarity's reference run has no Home Assistant listening, so on by itself it would measure an idle pane; measured by hand with HA listening (#121)",
       "size_max_bytes": 100000,
-      "note": "0.02 MB on 2026-11-14 with its engine library; off by default, so Clarity turns it on to measure it"
+      "note": "0.02 MB on 2026-11-14 with its engine library"
     }
   }
 }
