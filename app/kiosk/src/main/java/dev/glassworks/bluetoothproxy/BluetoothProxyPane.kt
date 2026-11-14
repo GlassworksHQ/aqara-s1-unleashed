@@ -49,11 +49,11 @@ class BluetoothProxyPane(
     private val entities = listOf(
         SensorEntity(
             "bluetooth_advertisements", "Bluetooth advertisements", "mdi:bluetooth-audio", unit = "/min",
-            category = EntityCategory.DIAGNOSTIC, get = { status()?.advertisementsPerMinute?.toFloat() },
+            category = EntityCategory.DIAGNOSTIC, disabledByDefault = true, get = { status()?.advertisementsPerMinute?.toFloat() },
         ),
         TextSensorEntity(
             "bluetooth_proxy_status", "Bluetooth proxy status", "mdi:bluetooth-settings",
-            category = EntityCategory.DIAGNOSTIC, get = { phase().entityText },
+            category = EntityCategory.DIAGNOSTIC, disabledByDefault = true, get = { phase().entityText },
         ),
     )
 

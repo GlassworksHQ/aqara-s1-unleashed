@@ -142,7 +142,7 @@ open the entity, and turn on *Enabled*.
 | CPU usage, CPU temperature, Wi-Fi signal, Uptime | `cpu_usage`, `cpu_temperature`, `wifi_signal`, `uptime` | diagnostics | diagnostic | on | The few health values people check ([Diagnostics](#diagnostics)) |
 | Diagnostics | `diagnostics` | diagnostics | config | off | Set once: the pane's on/off |
 | Bluetooth proxy | `bluetooth_proxy` | Bluetooth proxy | config | off | Set once: the pane's on/off ([Bluetooth proxy](#bluetooth-proxy)) |
-| Bluetooth advertisements, Bluetooth proxy status | `bluetooth_advertisements`, `bluetooth_proxy_status` | Bluetooth proxy | diagnostic | on | Shows the proxy works; unavailable while it is off |
+| Bluetooth advertisements, Bluetooth proxy status | `bluetooth_advertisements`, `bluetooth_proxy_status` | Bluetooth proxy | diagnostic | off | Troubleshooting: the settings page shows both. Unavailable while the pane is off |
 | App CPU usage, RAM available, App RAM, Storage free, Wi-Fi link speed, App uptime, Web content processes, Last restart reason | `app_cpu_usage`, `memory_available`, `app_memory`, `storage_free`, `wifi_link_speed`, `app_uptime`, `web_content_processes`, `last_restart_reason` | diagnostics | diagnostic | off | Troubleshooting (unchanged since #142) |
 | Voice | `voice` | voice | config | off | Set once: the pane's on/off ([Panes on and off](#panes-on-and-off)) |
 | Mute microphone | `mute_microphone` | voice | config | on | Privacy, toggled day to day |
@@ -304,7 +304,8 @@ services › Bluetooth*, and hears the BLE sensors near the panel through it. No
   measurable: Wi-Fi on 5 GHz kept its throughput and Sendspin had no underruns (2026-11-14, #121).
 - *Bluetooth advertisements* is how many it forwarded in the last full minute. *Bluetooth proxy
   status* is `Listening`, `Waiting for Home Assistant`, `Bluetooth off`, `Location off`,
-  `No permission`, `Retrying` or `No Bluetooth LE`. Both are unavailable while the pane is off.
+  `No permission`, `Retrying` or `No Bluetooth LE`. Both are diagnostic and off in HA until you turn
+  them on there; the panel's settings page shows both anyway. Both are unavailable while the pane is off.
 - Android hands Bluetooth results to apps only while **location** is on. The settings page offers to
   turn Bluetooth and location on when they are off.
 - The panel never logs or keeps the addresses it hears. They go only to Home Assistant, and only
