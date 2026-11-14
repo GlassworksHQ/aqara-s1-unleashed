@@ -107,6 +107,10 @@ and the radio mode.
 
 ## Open questions
 
+Answered on 2026-11-14 in [install-crash-loop.md](install-crash-loop.md): the cause is Android 10's
+`<=` in `ProcessList.removeLruProcessLocked` (Android 11 uses `<`), any kiosk force-stop can trigger it,
+and `dumpsys activity processes` shows the broken state. The questions below are kept as they were.
+
 - Does the same happen on stock Aqara firmware with the Aqara launcher, or only with a multi-process
   app that restarts itself? The next test is a fast install loop of a single-process test app.
 - Is it the AOSP bug fixed later in `ProcessList.updateLruProcessLocked`? Compare with the Android 11
