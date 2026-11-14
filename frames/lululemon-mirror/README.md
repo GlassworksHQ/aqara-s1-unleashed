@@ -44,7 +44,7 @@ A Glassworks **frame**: the device definition for the lululemon Studio Mirror. I
 
 ## Status
 
-**Status: planned.** Nothing installs on it yet. Only the original version is a possible target: a Qualcomm board, stock software 1.x and a screen of about 40 inches. The later version (software 5.x, about 43 inches, a blue button on the top edge) has a locked NXP board.
+**Status: planned.** (The badge above says "under development": there is no "planned" status badge yet.) Nothing installs on it yet. Only the original version is a possible target: a Qualcomm board, stock software 1.x and a screen of about 40 inches. The later version (software 5.x, about 43 inches, a blue button on the top edge) has a locked NXP board.
 
 The original version runs Android 6.0.1, and S1 Kiosk needs Android 8.0 or newer (`minSdk` 26), so today's app doesn't install on it. Why a newer Android is hard on this board: [mirror-android.md](research/mirror-android.md).
 
