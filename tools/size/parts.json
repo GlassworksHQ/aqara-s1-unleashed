@@ -30,6 +30,7 @@
   "timers": {"dex": ["sh.edm.s1kiosk.timers.", "sh.edm.s1kiosk.TimerBoard", "sh.edm.s1kiosk.TimerOverlay"]},
   "time-zone": {"dex": ["sh.edm.s1kiosk.frame.TimeZonePane", "sh.edm.s1kiosk.frame.TimeZoneKeeper"],
                 "_why": "TimeZoneKeeper is used only by TimeZonePane"},
-  "diagnostics": {"dex": ["dev.glassworks.diagnostics."]}
+  "diagnostics": {"dex": ["dev.glassworks.diagnostics."]},
+  "bluetooth-proxy": {"dex": ["dev.glassworks.bluetoothproxy.", "sh.edm.bluetoothproxy.", "sh.edm.s1kiosk.settings.BluetoothProxyPage"]}
  }
 }

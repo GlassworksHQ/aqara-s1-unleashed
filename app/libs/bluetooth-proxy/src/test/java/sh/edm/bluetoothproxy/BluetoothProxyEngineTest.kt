@@ -2,6 +2,7 @@ package sh.edm.bluetoothproxy
 
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -170,6 +171,28 @@ class BluetoothProxyEngineTest {
         assertNull(engine.status.failure)
     }
 
+    /** The other half of the guard: the scan failed and nothing replaced it, so its generation is still current (#222 delta review). */
+    @Test fun aFailedScansLateAdvertisementNeitherCountsNorClearsItsFailure() {
+        subscribe(true)
+        val l = scanner.listener!!
+        scanner.running = false
+        l.onFailed(ScanFailure.LOCATION_OFF)
+        loop.advanceBy(0)
+        l.onAdvertisement(0xC0FFEE0000AAL, -50, byteArrayOf(2, 1, 6)) // the same scan's, late
+        loop.advanceBy(1_000)
+        assertEquals("the failure stays", ScanFailure.LOCATION_OFF, engine.status.failure)
+        assertEquals("nothing forwarded", emptyList<List<RawAdvertisement>>(), sent)
+    }
+
+    @Test fun aRefusedSubscriberShowsAsNeedingTheKeyUntilOneSubscribes() {
+        engine.onRefused()
+        loop.advanceBy(0)
+        assertTrue(engine.status.needsKey)
+        assertEquals("no scan for a refused client", emptyList<String>(), scanner.calls)
+        subscribe(true)
+        assertFalse("a subscriber came: the key works", engine.status.needsKey)
+    }
+
     @Test fun bluetoothComingBackRetriesAtOnce() {
         subscribe(true)
         repeat(3) {
@@ -196,6 +219,31 @@ class BluetoothProxyEngineTest {
         assertEquals(40, engine.status.advertisementsPerMinute)
         loop.advanceBy(60_000)
         assertEquals(0, engine.status.advertisementsPerMinute)
+    }
+
+    @Test fun theLastMinuteCountsDifferentDevicesAndTheLastHourKeepsEachMinute() {
+        subscribe(true)
+        repeat(30) { scanner.hear(it % 3) } // 30 advertisements from 3 devices
+        loop.advanceBy(60_000)
+        val s = engine.status
+        assertEquals(30, s.advertisementsPerMinute)
+        assertEquals(3, s.devicesPerMinute)
+        loop.advanceBy(2 * 60_000L)
+        assertEquals("one line point per minute, quiet ones as 0", listOf(30, 0, 0), engine.status.lastHour)
+        loop.advanceBy(90 * 60_000L)
+        assertEquals("an hour at most", 60, engine.status.lastHour.size)
+    }
+
+    @Test fun aFailureSaysWhenTheNextTryIs() {
+        subscribe(true)
+        scanner.running = false
+        scanner.listener!!.onFailed(ScanFailure.ANDROID_ERROR)
+        loop.advanceBy(0)
+        assertEquals(30_000L, engine.status.retryInMs)
+        loop.advanceBy(10_000)
+        assertEquals(20_000L, engine.status.retryInMs)
+        loop.advanceBy(20_000)
+        assertNull("scanning again", engine.status.retryInMs)
     }
 
     @Test fun closeStopsTheScan() {

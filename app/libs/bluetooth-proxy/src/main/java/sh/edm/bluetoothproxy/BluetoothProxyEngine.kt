@@ -17,6 +17,14 @@ data class ProxyStatus(
     val failure: ScanFailure?,
     /** Advertisements forwarded in the last full minute. */
     val advertisementsPerMinute: Int,
+    /** Different devices heard in the last full minute. */
+    val devicesPerMinute: Int = 0,
+    /** Advertisements forwarded in each of the last (up to) 60 full minutes, oldest first. */
+    val lastHour: List<Int> = emptyList(),
+    /** After a failure: when the next try is due, in ms from now. Null when none is waiting. */
+    val retryInMs: Long? = null,
+    /** A client was refused for want of the device's key, and none has subscribed since. */
+    val needsKey: Boolean = false,
 )
 
 /**
@@ -85,10 +93,16 @@ class BluetoothProxyEngine internal constructor(
     @Volatile private var subscribed = false
     @Volatile private var scanning = false
     @Volatile private var failure: ScanFailure? = null
-    private val counter = MinuteCounter()
+    private val counter = MinuteStats()
+    @Volatile private var retryAt: Long? = null
+    @Volatile private var needsKey = false
 
     val status: ProxyStatus
-        get() = ProxyStatus(subscribed, scanning, failure, counter.perMinute(loop.now()))
+        get() {
+            val now = loop.now()
+            val m = counter.snapshot(now)
+            return ProxyStatus(subscribed, scanning, failure, m.advertisements, m.devices, m.lastHour, retryAt?.let { (it - now).coerceAtLeast(0) }, needsKey)
+        }
 
     /** Counts scan starts and stops. A scan's results and failure count only while its generation is current. */
     private var generation = 0
@@ -117,8 +131,11 @@ class BluetoothProxyEngine internal constructor(
         }
     }
 
+    override fun onRefused() = loop.execute { if (!closed && !subscribed) needsKey = true }
+
     override fun onSubscribed(subscribed: Boolean) = loop.execute {
         if (closed) return@execute
+        if (subscribed) needsKey = false
         this.subscribed = subscribed
         schedule.setSubscribed(subscribed, loop.now())
         if (!subscribed) pending.clear()
@@ -152,6 +169,7 @@ class BluetoothProxyEngine internal constructor(
             ScanSchedule.Action.RESTART -> { scanner.stop(); scanner.start(power, listener(++generation)) }
         }
         scanning = schedule.scanning
+        retryAt = schedule.retryAt.takeIf { !scanning && it > loop.now() }
         wake = step.wakeAt?.let { loop.schedule(it) { if (!closed) reconcile() } }
     }
 
@@ -159,6 +177,7 @@ class BluetoothProxyEngine internal constructor(
         if (closed || !subscribed) return
         if (failure != null) failure = null
         schedule.onAdvertisement()
+        counter.device(adv.address, loop.now())
         pending += adv
         if (pending.size >= RawAdvertisement.BATCH_SIZE) {
             flushPending()
@@ -171,22 +190,36 @@ class BluetoothProxyEngine internal constructor(
         if (pending.isEmpty() || closed) return
         val batch = pending.toList()
         pending.clear()
-        if (send(batch)) counter.add(batch.size, loop.now())
+        if (send(batch)) counter.advertisements(batch.size, loop.now())
     }
 }
 
-/** Counts per minute; [perMinute] is the last full minute's count. */
-internal class MinuteCounter {
-    private var start = Long.MIN_VALUE
-    private var current = 0
-    private var last = 0
+/**
+ * Per-minute counts: advertisements forwarded, and different devices heard. Devices are told apart by
+ * a salted hash kept for one minute in memory, never by the address itself. Also keeps the last hour of
+ * advertisement counts, for a line on a settings page.
+ */
+internal class MinuteStats(private val salt: Long = java.security.SecureRandom().nextLong()) {
+    class Minute(val advertisements: Int, val devices: Int, val lastHour: List<Int>)
 
-    @Synchronized fun add(n: Int, now: Long) {
+    private var start = Long.MIN_VALUE
+    private var advertisements = 0
+    private val devices = HashSet<Long>()
+    private var last = Minute(0, 0, emptyList())
+    private val hour = ArrayDeque<Int>()
+
+    @Synchronized fun advertisements(n: Int, now: Long) {
         roll(now)
-        current += n
+        advertisements += n
     }
 
-    @Synchronized fun perMinute(now: Long): Int {
+    @Synchronized fun device(address: Long, now: Long) {
+        roll(now)
+        devices += mix(address xor salt)
+    }
+
+    /** The last full minute. */
+    @Synchronized fun snapshot(now: Long): Minute {
         roll(now)
         return last
     }
@@ -195,9 +228,29 @@ internal class MinuteCounter {
         if (start == Long.MIN_VALUE) start = now
         val minutes = (now - start) / 60_000
         if (minutes == 0L) return
-        last = if (minutes == 1L) current else 0
-        current = 0
+        push(advertisements)
+        repeat(minOf(minutes - 1, HOUR.toLong()).toInt()) { push(0) }
+        last = if (minutes == 1L) Minute(advertisements, devices.size, hour.toList()) else Minute(0, 0, hour.toList())
+        advertisements = 0
+        devices.clear()
         start += minutes * 60_000
+    }
+
+    private fun push(n: Int) {
+        hour.addLast(n)
+        while (hour.size > HOUR) hour.removeFirst()
+    }
+
+    private companion object {
+        const val HOUR = 60
+
+        /** A 64-bit finalizer (MurmurHash3's fmix64): the set keeps no address it could give back. */
+        fun mix(v: Long): Long {
+            var k = v
+            k = k xor (k ushr 33); k *= -0xae502812aa7333L
+            k = k xor (k ushr 33); k *= -0x3b314601e57a13adL
+            return k xor (k ushr 33)
+        }
     }
 }
 

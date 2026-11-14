@@ -46,8 +46,15 @@ class ManagePaneSwitchesTest {
                 val s = manage.status()
                 val row = s.panes.single { it.id == d.id }
                 assertEquals(d.id, sw.title, row.title)
-                assertEquals("${d.id} on=$on", if (on) PaneState.Kind.RUNNING else PaneState.Kind.OFF, row.state.kind)
                 val section = s.sections.single { it.id == row.sectionId }
+                // Off wins; on, a pane this panel can't run says so (the Bluetooth proxy without Bluetooth LE,
+                // as under Robolectric). #226 and #178 met on main with RUNNING expected for it.
+                val expected = when {
+                    !on -> PaneState.Kind.OFF
+                    section.unavailable() != null -> PaneState.Kind.CANT_RUN
+                    else -> PaneState.Kind.RUNNING
+                }
+                assertEquals("${d.id} on=$on", expected, row.state.kind)
                 assertNotNull("${d.id}'s page has its on/off", section.master)
                 assertEquals(on, section.master!!.value())
             }

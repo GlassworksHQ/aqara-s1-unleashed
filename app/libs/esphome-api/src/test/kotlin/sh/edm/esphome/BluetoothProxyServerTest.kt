@@ -4,7 +4,6 @@ import org.junit.After
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -21,9 +20,11 @@ class BluetoothProxyServerTest {
         voiceFeatures = 0,
     )
     private val calls = CopyOnWriteArrayList<Boolean>()
+    /** These tests drive the server in plaintext ([PlainClient]): the subscription's own rules, the key aside. */
     private val handler = object : BluetoothProxyHandler {
         override val featureFlags = BluetoothProxyFeature.PASSIVE_SCAN or BluetoothProxyFeature.RAW_ADVERTISEMENTS
         override fun onSubscribed(subscribed: Boolean) { calls += subscribed }
+        override val authOnly = false
     }
     private val server = ApiServer(0, { identity }, emptyList(), keys = null, bindAddress = InetAddress.getLoopbackAddress())
 
@@ -40,6 +41,11 @@ class BluetoothProxyServerTest {
     private fun advertisement(n: Int) = RawAdvertisement(
         address = 0xC0FFEE000000L + n, rssi = -60 - n, addressType = n % 2, data = byteArrayOf(2, 1, 6, 3, 0xFF.toByte(), n.toByte(), 0),
     )
+
+    /** A server thread is blocked on a monitor inside ApiServer's subscribeBluetooth. */
+    private fun subscribeBlocked() = Thread.getAllStackTraces().any { (t, stack) ->
+        t.state == Thread.State.BLOCKED && stack.any { it.className.startsWith(ApiServer::class.java.name) && it.methodName.contains("subscribeBluetooth") }
+    }
 
     private fun waitFor(what: String, cond: () -> Boolean) {
         val until = System.nanoTime() + TimeUnit.SECONDS.toNanos(10)
@@ -97,6 +103,7 @@ class BluetoothProxyServerTest {
         val b = object : BluetoothProxyHandler {
             override val featureFlags = handler.featureFlags
             override fun onSubscribed(subscribed: Boolean) { other += subscribed }
+            override val authOnly = false
         }
         PlainClient(server.localPort).use { c ->
             c.subscribe()
@@ -150,7 +157,8 @@ class BluetoothProxyServerTest {
                 assertTrue("the send is under way", parked.await(10, TimeUnit.SECONDS))
                 second.send(BluetoothMsg.SUBSCRIBE_LE_ADVERTISEMENTS_REQUEST, ProtoWriter().uint32(1, 1))
                 second.send(Msg.PING_REQUEST)
-                assertNull("the subscription changed hands while a batch was being sent", second.read(500))
+                // Seen, not waited out: its reader thread stops at the lock while the batch is sent.
+                waitFor("the second client's subscribe to wait for the lock") { subscribeBlocked() }
 
                 release.countDown()
                 sender.join(10_000)
@@ -161,6 +169,45 @@ class BluetoothProxyServerTest {
                 assertTrue("and nothing more to the first", first.roundTrip().none { it.type == BluetoothMsg.LE_RAW_ADVERTISEMENTS_RESPONSE })
             }
         }
+    }
+
+    /** A proxy as the engine is one: a plaintext client on a panel without a key hears nothing (#226 review). */
+    @Test fun aPlaintextClientCantListenToAKeyedProxy() {
+        server.bluetooth = object : BluetoothProxyHandler {
+            override val featureFlags = handler.featureFlags
+            override fun onSubscribed(subscribed: Boolean) { calls += subscribed }
+        }
+        server.start()
+        PlainClient(server.localPort).use { stranger ->
+            stranger.subscribe()
+            assertEquals("the proxy wasn't told of a subscriber", emptyList<Boolean>(), calls)
+            assertFalse("and nothing is sent", server.sendBluetoothAdvertisements(listOf(advertisement(1))))
+        }
+    }
+
+    /**
+     * A panel Home Assistant hasn't provisioned yet: encryption on, no key, so it accepts plaintext and
+     * zero-PSK clients. None of them is authenticated, so none may listen (verifier N3 on #226).
+     */
+    @Test fun anUnprovisionedPanelRefusesTheSubscription() {
+        val unprovisioned = ApiServer(0, { identity }, emptyList(), keys = NoiseKeys(MemoryKeyStore()), bindAddress = InetAddress.getLoopbackAddress())
+        var refused = 0
+        unprovisioned.bluetooth = object : BluetoothProxyHandler {
+            override val featureFlags = handler.featureFlags
+            override fun onSubscribed(subscribed: Boolean) { calls += subscribed }
+            override fun onRefused() { refused++ }
+        }
+        unprovisioned.start()
+        try {
+            PlainClient(unprovisioned.localPort).use { c ->
+                c.send(Msg.DEVICE_INFO_REQUEST)
+                assertTrue("the key can still be provisioned", c.await(Msg.DEVICE_INFO_RESPONSE).bool(26))
+                c.subscribe()
+                assertEquals("refused: the proxy heard of no subscriber", emptyList<Boolean>(), calls)
+                assertEquals("and was told why, so the panel can say so", 1, refused)
+                assertFalse(unprovisioned.sendBluetoothAdvertisements(listOf(advertisement(1))))
+            }
+        } finally { unprovisioned.stop() }
     }
 
     @Test fun theNewestSubscriberWinsAndTheProxyStopsWhenItLeaves() {

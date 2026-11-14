@@ -141,6 +141,8 @@ open the entity, and turn on *Enabled*.
 | Signed in | `signed_in` | core | diagnostic | off | Troubleshooting |
 | CPU usage, CPU temperature, Wi-Fi signal, Uptime | `cpu_usage`, `cpu_temperature`, `wifi_signal`, `uptime` | diagnostics | diagnostic | on | The few health values people check ([Diagnostics](#diagnostics)) |
 | Diagnostics | `diagnostics` | diagnostics | config | off | Set once: the pane's on/off |
+| Bluetooth proxy | `bluetooth_proxy` | Bluetooth proxy | config | off | Set once: the pane's on/off ([Bluetooth proxy](#bluetooth-proxy)) |
+| Bluetooth advertisements, Bluetooth proxy status | `bluetooth_advertisements`, `bluetooth_proxy_status` | Bluetooth proxy | diagnostic | off | Troubleshooting: the settings page shows both. Unavailable while the pane is off |
 | App CPU usage, RAM available, App RAM, Storage free, Wi-Fi link speed, App uptime, Web content processes, Last restart reason | `app_cpu_usage`, `memory_available`, `app_memory`, `storage_free`, `wifi_link_speed`, `app_uptime`, `web_content_processes`, `last_restart_reason` | diagnostics | diagnostic | off | Troubleshooting (unchanged since #142) |
 | Voice | `voice` | voice | config | off | Set once: the pane's on/off ([Panes on and off](#panes-on-and-off)) |
 | Mute microphone | `mute_microphone` | voice | config | on | Privacy, toggled day to day |
@@ -276,6 +278,7 @@ microphone or a port.
 | switch `Wall base` | `wall_base` | the wall base driver; off closes the port, and Aqara's daemon may run again unless `Block Aqara cloud` is on | `wall_base_enabled` | no |
 | switch `Keep time zone` | `keep_time_zone` | the time zone; off sets the zone to keep to `(off)`, so the root helper keeps none and adopts none ([radio.md](radio.md#root-helper-contract-v4)), and on keeps the same zone again. *Time zone status* says `off` only once the helper has let go | `time_zone_enabled` | no |
 | switch `Diagnostics` | `diagnostics` | the diagnostic sensors; off stops the sampling | `diagnostics_enabled` | no |
+| switch `Bluetooth proxy` | `bluetooth_proxy` | the Bluetooth proxy; **off by default**. On or off changes what the device info offers, so Home Assistant reconnects | `bluetooth_proxy_enabled` | no |
 
 The radio's on/off is `Radio mode` (`Off`). Voice on or off changes the voice features in the device
 info, so the panel asks Home Assistant to reconnect, as it does when the entity list changes. For those
@@ -287,6 +290,31 @@ presence and speaker together). Then:
 - The **Assist satellite** and HA's own voice entities (*Assist pipeline*, *Wake word*, *Finished
   speaking detection*) go away while Voice is off, because the panel has no voice features then. They
   come back when Voice is on.
+
+### Bluetooth proxy
+
+The Bluetooth proxy pane (`dev.glassworks.bluetoothproxy`, #121) makes the panel an ESPHome Bluetooth
+proxy. It is off by default. Turn it on in the panel's settings, on setup's Panes step, or with the
+*Bluetooth proxy* switch. Home Assistant then finds it by itself under *Settings › Devices &
+services › Bluetooth*, and hears the BLE sensors near the panel through it. Nothing is added to HA.
+
+- **Listening only.** It forwards advertisements, which covers thermometers, plant sensors and tags.
+  Devices that need a connection (locks) need an ESP32 proxy for now.
+- **It scans only while Home Assistant listens**, full time then. On the S1 that cost nothing
+  measurable: Wi-Fi on 5 GHz kept its throughput and Sendspin had no underruns (2026-11-14, #121).
+- *Bluetooth advertisements* is how many it forwarded in the last full minute. *Bluetooth proxy
+  status* is `Listening`, `Waiting for Home Assistant`, `Waiting for the panel's key` (a client was
+  refused for want of the key), `Bluetooth off`, `Location off`,
+  `No permission`, `Retrying` or `No Bluetooth LE`. Both are diagnostic and off in HA until you turn
+  them on there; the panel's settings page shows both anyway. Both are unavailable while the pane is off.
+- Android hands Bluetooth results to apps only while **location** is on. The settings page offers to
+  turn Bluetooth and location on when they are off.
+- The panel never logs or keeps the addresses it hears. They go only to Home Assistant, and only
+  over an encrypted connection with the panel's key: Home Assistant 2026.11 and later sets it when
+  you add the panel. Without a key, the proxy answers nobody, so no one else on the LAN can listen.
+
+How it works, and Android's limits on scanning, are in the
+[bluetooth-proxy library](../app/libs/bluetooth-proxy/README.md).
 
 ### Diagnostics
 
