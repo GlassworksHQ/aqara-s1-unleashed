@@ -39,6 +39,7 @@ class ManagePaneSwitchesTest {
     private val manage = S1Manage(app, runtime, SignInServer(0, { null }, tokens, { _, _ -> }), tokens, prefs)
 
     @Test fun everySwitchedPaneReadsItsSwitch() {
+        val cantRun = HashSet<String>()
         for (d in runtime.paneDefinitions(app)) {
             val sw = d.switch ?: continue
             for (on in listOf(true, false)) {
@@ -46,13 +47,22 @@ class ManagePaneSwitchesTest {
                 val s = manage.status()
                 val row = s.panes.single { it.id == d.id }
                 assertEquals(d.id, sw.title, row.title)
-                assertEquals("${d.id} on=$on", if (on) PaneState.Kind.RUNNING else PaneState.Kind.OFF, row.state.kind)
                 val section = s.sections.single { it.id == row.sectionId }
+                // A pane that can't run on this device (the Bluetooth proxy under Robolectric: no adapter) reads
+                // Can't run while on; off still wins (paneRow).
+                val expected = when {
+                    !on -> PaneState.Kind.OFF
+                    section.unavailable() != null -> PaneState.Kind.CANT_RUN.also { cantRun += d.id }
+                    else -> PaneState.Kind.RUNNING
+                }
+                assertEquals("${d.id} on=$on", expected, row.state.kind)
                 assertNotNull("${d.id}'s page has its on/off", section.master)
                 assertEquals(on, section.master!!.value())
             }
             sw.on = sw.default
         }
+        // Only the Bluetooth proxy lacks its hardware here; any other pane reading Can't run is a regression.
+        assertEquals(setOf("bluetooth-proxy"), cantRun)
     }
 
     @Test fun thePanesTheManagePageLists() {
