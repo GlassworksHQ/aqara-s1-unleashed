@@ -509,4 +509,17 @@ class ManageServerTest {
         assertEquals(303, r.status)
         assertEquals("/", r.headers["Location"])
     }
+
+    @Test fun aLongNameInTheNavFootTruncatesAndSignOutStaysOnOneLine() {
+        f.user = HaUser("Alexandra Montgomery-Fitzgerald", isAdmin = true) // made up
+        val b = f.Browser()
+        b.signInWithHa()
+        val page = b.get("/").text()
+        // The name in its own element, cut with an ellipsis, the whole name in the tooltip.
+        assertTrue(page, page.contains("""<span class="nm" title="Alexandra Montgomery-Fitzgerald">Signed in · Alexandra Montgomery-Fitzgerald</span>"""))
+        val css = ManagePages.MANAGE_CSS
+        assertTrue(css.contains(".who .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}"))
+        assertTrue(Regex("""\.who button\{[^}]*white-space:nowrap[^}]*flex:none""").containsMatchIn(css))
+        assertTrue("the name's side may shrink", Regex("""\.who>span\{[^}]*min-width:0""").containsMatchIn(css))
+    }
 }
