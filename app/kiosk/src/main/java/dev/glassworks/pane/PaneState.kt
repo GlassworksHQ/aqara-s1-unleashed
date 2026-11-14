@@ -44,3 +44,13 @@ val PaneState.chipWord: String?
         PaneState.Kind.PROBLEM -> "Problem"
         PaneState.Kind.UNKNOWN -> null
     }
+
+/** The chip's dot: green while the pane runs, rose for a problem, quiet otherwise. Status colours mean status only (#243). */
+enum class ChipTone { OK, PROBLEM, QUIET }
+
+val PaneState.chipTone: ChipTone
+    get() = when (kind) {
+        PaneState.Kind.RUNNING -> ChipTone.OK
+        PaneState.Kind.PROBLEM -> ChipTone.PROBLEM
+        else -> ChipTone.QUIET
+    }

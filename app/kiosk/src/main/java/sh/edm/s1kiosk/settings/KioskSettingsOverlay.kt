@@ -18,8 +18,13 @@ import android.widget.ScrollView
 import android.widget.TextView
 import dev.glassworks.pane.SettingsItem
 import dev.glassworks.pane.SettingsSection
-import dev.glassworks.pane.PaneState
 import dev.glassworks.pane.chipWord
+import dev.glassworks.pane.ChipTone
+import dev.glassworks.pane.chipTone
+import dev.glassworks.pane.SettingsChange
+import dev.glassworks.pane.SettingsChange.couldNot
+import dev.glassworks.pane.SettingsChange.hhmm
+import dev.glassworks.pane.SettingsChange.parseRange
 import dev.glassworks.pane.paneState
 import sh.edm.s1kiosk.setup.Backdrop
 import sh.edm.s1kiosk.ui.Glass
@@ -35,7 +40,6 @@ import sh.edm.s1kiosk.ui.Inter
 import sh.edm.s1kiosk.ui.StackView
 import sh.edm.s1kiosk.ui.TileView
 import sh.edm.s1kiosk.ui.Wrap
-import java.util.Locale
 
 /**
  * The kiosk settings menu, as drawn in #63. Left: the mark, "Settings" and the rail ([GroupedRail], the
@@ -318,7 +322,7 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
                 dim = why != null,
                 off = why == null && s.master?.value() == false,
                 chip = state?.chipWord?.let { word ->
-                    GroupedRail.Chip(word, when (state.kind) { PaneState.Kind.RUNNING -> Glass.GREEN; PaneState.Kind.PROBLEM -> ROSE; else -> FA })
+                    GroupedRail.Chip(word, when (state.chipTone) { ChipTone.OK -> Glass.GREEN; ChipTone.PROBLEM -> ROSE; ChipTone.QUIET -> FA })
                 },
             )
         }, mapOf(PANES to "Panes"), current)
@@ -412,23 +416,28 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
     }
 
     private fun item(i: SettingsItem): View = when (i) {
-        is SettingsItem.Text -> row(i.title, shownOf(i), chevron = i.enabled(), dim = !i.enabled()) { if (i.enabled()) sheet.text(i) { build() } }
+        is SettingsItem.Text -> follow(row(i.title, shownOf(i), chevron = i.enabled(), dim = !i.enabled()) { if (i.enabled()) sheet.text(i) { build() } }) { shownOf(i) }
         is SettingsItem.Switch -> toggleRow(i)
         is SettingsItem.Slider -> sliderRow(i)
-        is SettingsItem.Duration -> row(i.title, i.shown(i.value()), chevron = true, dim = false) { sheet.duration(i) { build() } }
-        is SettingsItem.TimeRange -> row(i.title, i.shown(i.value()), chevron = true, dim = false) { sheet.range(i) { build() } }
+        is SettingsItem.Duration -> follow(row(i.title, i.shown(i.value()), chevron = true, dim = false) { sheet.duration(i) { build() } }) { i.shown(i.value()) }
+        is SettingsItem.TimeRange -> follow(row(i.title, i.shown(i.value()), chevron = true, dim = false) { sheet.range(i) { build() } }) { i.shown(i.value()) }
         is SettingsItem.Link -> row(i.title, i.detail, chevron = true, dim = i.detail.isEmpty()) { i.open(context) }
         is SettingsItem.Note -> g.text(14.5f, MU).apply { text = i.text(); setLineSpacing(0f, 1.25f); setPadding(0, px(14f), 0, px(14f)) }
         is SettingsItem.Info -> infoRow(i)
-        is SettingsItem.Choice -> row(i.title, choiceName(i), chevron = true, dim = false) { sheet.choice(i) { build() } }.also { r ->
-            // The picked one's name follows a change made elsewhere (Home Assistant's wake word select). The
-            // value view is always there today (a choice always has a name); the null branch is a guard only.
-            ((r.getChildAt(0) as? ViewGroup)?.getChildAt(1) as? TextView)?.let { value ->
-                live += { val n = choiceName(i); if (value.text != n) value.text = n }
-            }
-        }
+        is SettingsItem.Choice -> follow(row(i.title, choiceName(i), chevron = true, dim = false) { sheet.choice(i) { build() } }) { choiceName(i) }
         is SettingsItem.Group, is SettingsItem.States, is SettingsItem.Status, is SettingsItem.Tiles -> error("laid out by addItems")
         is SettingsItem.Native -> natives.getOrPut(i.key) { i.create(nativeHost) }.also { it.refresh() }.view
+    }
+
+    /**
+     * The row's value follows a change made elsewhere: Home Assistant (the wake word select) or the Manage
+     * page (#242). The value view is always there for these rows (each has a value or a hint); the null
+     * branch is a guard only.
+     */
+    private fun follow(r: LinearLayout, now: () -> String): LinearLayout = r.also {
+        ((r.getChildAt(0) as? ViewGroup)?.getChildAt(1) as? TextView)?.let { value ->
+            live += { val n = now(); if (value.text != n) value.text = n }
+        }
     }
 
     /** A name and a status line under it, read again on [refresh] (#212: what plays now). */
@@ -456,7 +465,7 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
         }
     }
 
-    private fun choiceName(i: SettingsItem.Choice): String { val v = i.value(); return i.options().firstOrNull { it.first == v }?.second ?: v }
+    private fun choiceName(i: SettingsItem.Choice): String = SettingsChange.shown(i)
 
     /**
      * "In Home Assistant" (#212): its label, then a name on the left and its value on the right, one line
@@ -542,10 +551,7 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
         return box
     }
 
-    private fun shownOf(i: SettingsItem.Text): String {
-        val v = i.value()
-        return if (v.isBlank()) i.shown(v).ifBlank { i.hint } else i.shown(v)
-    }
+    private fun shownOf(i: SettingsItem.Text): String = SettingsChange.shown(i)
 
     /** A name, its value under it and, when it opens something, a chevron. [dim]: a quieter row (Aqara's own settings). */
     private fun row(name: String, value: String, chevron: Boolean, dim: Boolean, onClick: (() -> Unit)?) = LinearLayout(context).apply {
@@ -574,6 +580,8 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
             if (ask == null) apply(on)
             else { t.checked = !on; sheet.confirm(ask) { t.checked = on; apply(on) } }
         }
+        // Follows a change made elsewhere (the Manage page, #242), as the master does.
+        live += { val v = i.value(); if (t.checked != v) t.checked = v }
         return LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -765,7 +773,8 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
                 SettingsItem.TextKind.NUMBER -> InputType.TYPE_CLASS_NUMBER
                 SettingsItem.TextKind.DECIMAL -> InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
             }
-            onSave = { commit(i.restartsApp, after) { done -> i.save(field.text?.toString().orEmpty(), done) } }
+            // Checked as the Manage page checks it (#242): one path for a typed value.
+            onSave = { commit(i.restartsApp, after) { done -> SettingsChange.change(i, field.text?.toString().orEmpty(), done) } }
             open(i.title, i.hint, field, "Save")
             field.setText(i.value())
             field.hint = i.hint
@@ -864,21 +873,9 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
     }
 
     companion object {
-        const val RESTART_TEXT = "This takes effect after the app restarts. It takes about 5 seconds."
-        const val OFF_BY_DEFAULT = "Dimmed: off by default in Home Assistant. Turn them on there to keep their history."
+        const val RESTART_TEXT = SettingsChange.RESTART_TEXT
+        const val OFF_BY_DEFAULT = SettingsChange.OFF_BY_DEFAULT
         private const val PANES = "panes"
 
-        /** What a save that threw says. */
-        fun couldNot(e: Throwable): String = "That didn't save: ${e.message ?: e.javaClass.simpleName}."
-
-        fun hhmm(min: Int): String = String.format(Locale.ROOT, "%02d:%02d", min / 60, min % 60)
-
-        /** `22:00-07:00` as minutes after midnight, or null. */
-        fun parseRange(w: String): Pair<Int, Int>? {
-            val m = Regex("""^\s*(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})\s*$""").find(w) ?: return null
-            val (h1, m1, h2, m2) = m.destructured
-            val a = h1.toInt() * 60 + m1.toInt(); val b = h2.toInt() * 60 + m2.toInt()
-            return if (a < 24 * 60 && b < 24 * 60) a to b else null
-        }
     }
 }

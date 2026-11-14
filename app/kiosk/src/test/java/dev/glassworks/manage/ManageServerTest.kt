@@ -410,17 +410,24 @@ class ManageServerTest {
         assertNotNull(Regex("Needs the wall base attached").find(b.get("/").text()))
     }
 
-    @Test fun aPaneThatIsOffShowsNoSettingsOrLinks() {
-        f.status = f.status.copy(panes = f.status.panes.map {
-            if (it.id == "radio") it.copy(state = dev.glassworks.pane.PaneState(dev.glassworks.pane.PaneState.Kind.OFF, "Turned off")) else it
-        })
+    @Test fun aPaneThatIsOffShowsThePanelsOffPageAndNoLinks() {
+        // The off page as paneSections makes it: what off means, and the switch to turn it on again (#242).
+        val off = "The radio is off."
+        f.status = f.status.copy(
+            panes = f.status.panes.map {
+                if (it.id == "radio") it.copy(state = dev.glassworks.pane.PaneState(dev.glassworks.pane.PaneState.Kind.OFF, "Turned off")) else it
+            },
+            sections = f.status.sections.map {
+                if (it.id != "radio") it else dev.glassworks.pane.SettingsSection("radio", "Radio", listOf(dev.glassworks.pane.SettingsItem.Note { off }),
+                    master = dev.glassworks.pane.SettingsItem.Switch("Radio", "", { false }) { _, d -> d(null) })
+            },
+        )
         val b = f.Browser()
         b.signInWithHa()
         val radio = b.get("/radio").text()
-        assertTrue(radio.contains("Turned off"))
-        assertTrue(radio.contains(ManagePages.TURNED_OFF))
+        assertTrue(radio.contains(off))
+        assertTrue("its on/off, off, to turn it on here", radio.contains("""role="switch" aria-checked="false""""))
         assertFalse("no Thread join while the radio is off", radio.contains("href=\"/thread\""))
-        assertFalse("no settings while it is off", radio.contains("socket://192.0.2.40:6638"))
         assertFalse(radio.contains("Change these on the panel"))
     }
 

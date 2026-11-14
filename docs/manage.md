@@ -7,15 +7,15 @@ router gives it (`panel.lan`) or a name with a trailing dot, get "Open this page
 address": the page only answers to its own addresses and names (see below). It shows how the panel is doing,
 keeps a log, and runs the everyday actions. It's part of the Glassworks core, so every frame has it.
 
-Status: **new, not yet checked on a panel.** This first version shows the panes' settings but
-doesn't change them yet; change them on the panel's own settings for now.
+Status: **new, not yet checked on a panel.** It has the same settings as the panel's own menu, and
+changes them the same way.
 
 ## What's on it
 
 | Page | What it has |
 |---|---|
 | Overview | Running or not, version and uptime; Home Assistant, Wi-Fi, the web engine, memory; every pane with its state (running, off, or can't run and why). Buttons: **Reload dashboard**, **Restart app**, **Reboot**, **Check for updates** |
-| Dashboard, Panel, each pane | The settings the panel's own menu has, read-only for now. A pane's page shows whether it's on; a pane that's off shows only that, and where to turn it on. The radio's page links to the Thread join |
+| Dashboard, Screen, each pane | Every setting the panel's own menu has, in the same order and words, and you can change each one here. A pane's page has its on/off at the top right and shows what it's doing; a pane that's off says what that means. The radio's page links to the Thread join |
 | Log | The last 7 days, kept across reboots. Filter by warnings or errors, search, and **Download diagnostics** |
 | Security | The browsers signed in, each with **Sign out** |
 | About | Versions, frame, licences |
@@ -23,7 +23,22 @@ doesn't change them yet; change them on the panel's own settings for now.
 On a phone the menu folds behind the ☰ button. Light or dark follows your phone or computer.
 
 Not on the page, because they need someone at the panel: the first Wi-Fi, Bluetooth's "Allow", and
-Aqara's own settings app.
+Aqara's own settings app. Some pane pages still have parts only the panel draws, and the page says
+"On the panel" for them: the radio's roles and Thread network, the time zone picker, the wall base's
+relays, and the Bluetooth proxy's devices.
+
+## Changing settings
+
+A change applies on its own, as on the panel: a switch when you click it, a slider with **Save**, a
+value, a time or a choice from its dialog. The panel checks each value as its own controls would (a
+slider's range, a duration's choices), so the page can't set anything the panel wouldn't. A change
+that only takes effect when the app starts again says so and offers **Restart now**. A switch that
+asks first on the panel (turning the radio off) asks here too. The panel's menu, if it's open, shows
+the new value within a couple of seconds, and the page shows a change made on the panel when you
+reload it. Each change goes in the Log with who made it.
+
+**Turning a pane on or off needs a Home Assistant sign-in.** In Home Assistant these switches only
+answer the panel's key, so a browser signed in with the panel's code sees them but can't change them.
 
 ## Signing in
 

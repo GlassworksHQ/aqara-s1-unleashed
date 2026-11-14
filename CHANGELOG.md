@@ -8,6 +8,12 @@ below as the release notes.
 ## [Unreleased]
 
 ### Added
+- **Change the panel's settings from the Manage page.** Every setting in the panel's own menu is on
+  the Manage page too, in the same order and words, and you can change it there: switches, sliders,
+  addresses, times and choices, and each pane's on/off (that one needs a Home Assistant sign-in). The
+  panel checks each value as its own controls would. The open settings menu on the panel follows a
+  change made in the browser. A few parts only the panel can draw yet (the radio's roles, the time
+  zone picker, the wall base's relays, the Bluetooth proxy's devices) say "On the panel".
 - **Every pane's settings page shows what it is doing.** No page says "no settings of its own" any
   more. Diagnostics shows CPU, temperature, RAM, Wi-Fi, storage and uptime, with the last hour as a
   line. Wall base shows the base, its firmware, protection and power, and each relay with its switch
@@ -17,6 +23,10 @@ below as the release notes.
   helper. A pane with nothing of its own lists its entities as Home Assistant shows them.
 
 ### Changed
+- **The panel and the Manage page look the same.** Both read one set of Glassworks colours and
+  shapes: the status chips, switches, rows and dialogs match, and the Manage page's menu folds the
+  panes you turned off under "Off · N", as the panel does. On the panel, hairlines and tile corners
+  move to the brand's values.
 - **Panes you turned off fold at the bottom of the list.** In the settings menu they sit under
   "Off · N"; open it, or a pane in it, to see them. An off pane's page says what being off means.
   Every pane shows its state after its name, Running, On, Off or Can't run, as the Manage page does,

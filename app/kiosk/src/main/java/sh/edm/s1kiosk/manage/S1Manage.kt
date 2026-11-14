@@ -27,8 +27,6 @@ import dev.glassworks.manage.SessionStore
 import dev.glassworks.manage.Tile
 import dev.glassworks.pane.SettingsItem
 import dev.glassworks.pane.SettingsSection
-import dev.glassworks.pane.paneSections
-import dev.glassworks.pane.settingsOrder
 import dev.glassworks.web.HttpRequest
 import dev.glassworks.web.HttpResponse
 import dev.glassworks.web.HttpServer
@@ -48,7 +46,7 @@ import sh.edm.s1kiosk.auth.ThreadJoin
 import sh.edm.s1kiosk.auth.TokenResult
 import sh.edm.s1kiosk.auth.WsHaSocket
 import sh.edm.s1kiosk.esphome.PanelDevice
-import sh.edm.s1kiosk.settings.CoreSettings
+import sh.edm.s1kiosk.settings.S1Settings
 import sh.edm.s1kiosk.setup.SetupState
 import sh.edm.s1kiosk.update.UpdateManager
 import java.io.File
@@ -101,11 +99,9 @@ class S1Manage(context: Context, private val runtime: GlassworksRuntime, signIn:
 
         override fun status(): PanelStatus {
             val defs = runtime.paneDefinitions(app)
-            val core = CoreSettings(prefs, BuildConfig.VERSION_NAME, status = { runtime.screen.statusLine() },
-                deviceSettings = null, licences = SettingsItem.Link(CoreSettings.LICENCES_TITLE, CoreSettings.LICENCES_DETAIL) {})
-            // The panes' sections as the panel's menu has them, each with its on/off (#67) as the master.
-            val panes = defs.flatMap { d -> runCatching { paneSections(listOf(d), runtime::runningPane) }.onFailure { Log.w(TAG, "${d.id}'s settings failed", it) }.getOrDefault(emptyList()) }
-            val sections = settingsOrder(core.sections(), panes)
+            // The panel menu's own model (#242): the same sections, items and saves.
+            val model = S1Settings.model(runtime, prefs, defs, S1Settings.hasDeviceSettings(runtime, app), fullScreen = ::fullScreen)
+            val panes = model.sections.filter { it.id in model.panes }
             return PanelStatus(
                 name = name,
                 frame = "S1 Plus",
@@ -114,9 +110,9 @@ class S1Manage(context: Context, private val runtime: GlassworksRuntime, signIn:
                 haBase = prefs.haBase,
                 tiles = listOf(haTile(), wifiTile(), engineTile(), memoryTile()),
                 panes = defs.map { d -> s1PaneRow(d.id, panes.firstOrNull { it.id == d.id }) },
-                sections = sections.filter { it.id != "about" },
+                sections = model.sections,
+                // After the About section's own items (the version, the licences).
                 about = listOf(
-                    "Glassworks Panel" to "S1 Kiosk ${BuildConfig.VERSION_NAME}",
                     "Frame" to "Aqara Panel Hub S1 Plus",
                     "Android" to Build.VERSION.RELEASE,
                     "Engine" to runtime.engine.name.ifEmpty { "Unknown" },
@@ -124,6 +120,11 @@ class S1Manage(context: Context, private val runtime: GlassworksRuntime, signIn:
                     "Source" to "github.com/GlassworksHQ/glassworks",
                 ),
             )
+        }
+
+        /** On the main thread, as the panel's menu changes settings. */
+        override fun onMain(f: () -> Unit) {
+            if (Looper.myLooper() == Looper.getMainLooper()) f() else Handler(Looper.getMainLooper()).post(f)
         }
 
         override fun diagnostics(): String = buildString {
@@ -149,6 +150,11 @@ class S1Manage(context: Context, private val runtime: GlassworksRuntime, signIn:
                 appendLine("  $k = ${prop(k)}")
             }
         }
+    }
+
+    /** Full screen changed: the running dashboard follows, as the adb extras make it ([MainActivity] pushes its config). */
+    private fun fullScreen() {
+        runtime.commandSink?.invoke(Intent().putExtra("hide_header", prefs.hideHeader).putExtra("hide_sidebar", prefs.hideSidebar))
     }
 
     private fun itemLines(items: List<SettingsItem>): List<String> = items.flatMap { i ->

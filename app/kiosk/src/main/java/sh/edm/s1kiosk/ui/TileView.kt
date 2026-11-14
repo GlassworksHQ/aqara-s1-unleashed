@@ -1,5 +1,6 @@
 package sh.edm.s1kiosk.ui
 
+import dev.glassworks.brand.Tokens
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
@@ -28,7 +29,7 @@ class TileView(context: Context, big: Float, private val graph: Boolean) : Linea
 
     init {
         orientation = VERTICAL
-        background = g.surface(20f)
+        background = g.surface(Tokens.R_TILE.toFloat())
         setPadding(g.px(16f), g.px(13f), g.px(16f), g.px(12f))
         addView(name)
         addView(LinearLayout(context).apply {

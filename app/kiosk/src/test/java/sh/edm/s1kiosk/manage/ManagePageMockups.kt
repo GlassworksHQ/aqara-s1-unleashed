@@ -88,8 +88,9 @@ class ManagePageMockups {
         long.signInWithHa()
         val page = long.get("/")
         save("12-long-name", page)
-        save("12b-long-name-menu", HttpResponse(page.status, page.headers,
-            page.text().replace("<details class=\"menu\">", "<details class=\"menu\" open>").toByteArray()))
+        val open = page.text().replace("<details class=\"menu\">", "<details class=\"menu\" open>")
+        org.junit.Assert.assertNotEquals("the phone's menu opened in the mock-up", page.text(), open)
+        save("12b-long-name-menu", HttpResponse(page.status, page.headers, open.toByteArray()))
         f.user = dev.glassworks.manage.HaUser("Alex", isAdmin = true)
 
         // #67: every pane has its on/off. Music off; Time zone and Diagnostics have only their switch.
