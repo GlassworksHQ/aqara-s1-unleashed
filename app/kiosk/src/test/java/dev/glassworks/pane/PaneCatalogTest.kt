@@ -71,6 +71,12 @@ class PaneCatalogTest {
         assertTrue(!implementsPane("class E(val pane: Pane) : AutoCloseable {"))
         assertTrue(!implementsPane("class F(file: SharedPreferences) : PaneDefinition {"))
         assertTrue(!implementsPane("data class G(val p: Pane)"))
+        // a bracket inside a string, char or comment doesn't end the constructor
+        assertTrue(implementsPane("class H(val label: String = \")\", val c: Char = ')') : Pane {"))
+        assertTrue(implementsPane("class I(\n    x: Int, // a ) in a comment\n) : AutoCloseable, Pane {"))
+        // Pane as a type argument isn't a supertype
+        assertTrue(!implementsPane("class Holder : Container<Foo, Pane>() {"))
+        assertTrue(implementsPane("class J : Container<Foo, Bar>(), Pane {"))
     }
 
     @Test
@@ -143,20 +149,52 @@ class PaneCatalogTest {
 
 /**
  * Whether [text] declares a class that has `Pane` among its supertypes: after the class name, any type
- * parameters, a constructor modifier and the (balanced) constructor parameters, the list after `:` up
- * to the class body. `Pane` counts anywhere in it, by simple or qualified name.
+ * parameters, a constructor modifier and the constructor parameters, the list after `:` up to the class
+ * body, split at its top-level commas. `Pane` counts anywhere in it, by simple or qualified name. String
+ * and char literals and comments don't count when balancing brackets or splitting.
  */
 internal fun implementsPane(text: String): Boolean {
+    /** The index just past the literal or comment that starts at [at], or [at] if none does. */
+    fun skipLiteral(at: Int): Int {
+        if (text.startsWith("\"\"\"", at)) return text.indexOf("\"\"\"", at + 3).let { if (it < 0) text.length else it + 3 }
+        if (text.startsWith("//", at)) return text.indexOf('\n', at).let { if (it < 0) text.length else it + 1 }
+        if (text.startsWith("/*", at)) return text.indexOf("*/", at + 2).let { if (it < 0) text.length else it + 2 }
+        val q = text[at]
+        if (q != '"' && q != '\'') return at
+        var i = at + 1
+        while (i < text.length && text[i] != q) i += if (text[i] == '\\') 2 else 1
+        return i + 1
+    }
+    /** Past the bracket that closes the one at [at]. */
     fun skipBalanced(at: Int, open: Char, close: Char): Int {
         var depth = 0
         var i = at
         while (i < text.length) {
+            val past = skipLiteral(i)
+            if (past != i) { i = past; continue }
             when (text[i]) { open -> depth++; close -> if (--depth == 0) return i + 1 }
             i++
         }
         return i
     }
     fun skipSpace(at: Int): Int { var i = at; while (i < text.length && text[i].isWhitespace()) i++; return i }
+    /** The supertypes from [from] to the class body: split at commas outside <>, () and literals. */
+    fun supertypes(from: Int): List<String> {
+        val parts = mutableListOf<String>()
+        var start = from
+        var depth = 0
+        var i = from
+        while (i < text.length) {
+            val past = skipLiteral(i)
+            if (past != i) { i = past; continue }
+            val c = text[i]
+            if (depth == 0 && c == '{') break
+            when (c) { '<', '(' -> depth++; '>', ')' -> depth--; ',' -> if (depth == 0) { parts += text.substring(start, i); start = i + 1 } }
+            i++
+        }
+        parts += text.substring(start, i)
+        return parts
+    }
     val modifier = Regex("""\G(?:(?:public|internal|private|protected)\s+)?constructor\b""")
     return Regex("""\bclass\s+\w+""").findAll(text).any { m ->
         var i = skipSpace(m.range.last + 1)
@@ -164,9 +202,6 @@ internal fun implementsPane(text: String): Boolean {
         modifier.find(text, i)?.let { i = skipSpace(it.range.last + 1) }
         if (i < text.length && text[i] == '(') i = skipSpace(skipBalanced(i, '(', ')'))
         if (i >= text.length || text[i] != ':') return@any false
-        val end = text.indexOf('{', i).let { if (it < 0) text.length else it }
-        text.substring(i + 1, end).split(',').any { type ->
-            Regex("""^\s*([\w.]+)""").find(type)?.groupValues?.get(1)?.substringAfterLast('.') == "Pane"
-        }
+        supertypes(i + 1).any { type -> Regex("""^\s*([\w.]+)""").find(type)?.groupValues?.get(1)?.substringAfterLast('.') == "Pane" }
     }
 }
