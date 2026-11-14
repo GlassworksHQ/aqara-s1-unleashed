@@ -28,8 +28,8 @@ class GroupedRail(context: Context) : LinearLayout(context) {
     /**
      * One row. [group]: the group it sits under, or null. [dim]: greyed
      * (a pane that can't run), [detail] then says why. [enabled]: it can be tapped. [off]: folded at the
-     * end of its group. [chip]: the pane's status after its name ("Radio  ● Running"), so every name starts
-     * at the same x (#243); null for none.
+     * end of its group. [chip]: the pane's status after its name, at the row's end ("Radio … ● Running"), so
+     * every name starts at the same x (#243); null for none.
      */
     class Row(
         val id: String, val title: String, val group: String? = null, val mark: Mark = Mark.NONE,
@@ -114,13 +114,10 @@ class GroupedRail(context: Context) : LinearLayout(context) {
             else -> Glass.MU
         }
         val name = g.text(if (child) 15f else 16.5f, color2).apply { text = title; setSingleLine(); ellipsize = TextUtils.TruncateAt.END }
-        if (chip == null) addView(name, LayoutParams(0, -2, 1f))
-        else {
-            // The name keeps its x; the chip follows it, and the rest of the row stays empty.
-            addView(name, LayoutParams(-2, -2))
-            addView(chip(chip), LayoutParams(-2, -2).apply { marginStart = g.px(8f) })
-            addView(View(context), LayoutParams(0, 0, 1f))
-        }
+        // The name keeps its x and takes what the chip leaves, shortened with an ellipsis if it must: the chip
+        // keeps its whole word at the row's end, as on the Manage page (#235 verifier: "Can't run" was cut).
+        addView(name, LayoutParams(0, -2, 1f))
+        chip?.let { addView(chip(it), LayoutParams(-2, -2).apply { marginStart = g.px(8f) }) }
         detail?.let { d -> addView(g.text(12.5f, Glass.FA).apply { text = d; setSingleLine() }, LayoutParams(-2, -2).apply { marginStart = g.px(8f) }) }
         background = if (selected) g.surface(12f) else null
         contentDescription = title

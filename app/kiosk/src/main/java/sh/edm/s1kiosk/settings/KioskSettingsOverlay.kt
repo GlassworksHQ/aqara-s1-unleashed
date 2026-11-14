@@ -422,8 +422,9 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
         is SettingsItem.Info -> infoRow(i)
         is SettingsItem.Choice -> row(i.title, choiceName(i), chevron = true, dim = false) { sheet.choice(i) { build() } }.also { r ->
             // The picked one's name follows a change made elsewhere (Home Assistant's wake word select).
-            val value = (r.getChildAt(0) as ViewGroup).getChildAt(1) as TextView
-            live += { val n = choiceName(i); if (value.text != n) value.text = n }
+            ((r.getChildAt(0) as? ViewGroup)?.getChildAt(1) as? TextView)?.let { value ->
+                live += { val n = choiceName(i); if (value.text != n) value.text = n }
+            }
         }
         is SettingsItem.Group, is SettingsItem.States, is SettingsItem.Status, is SettingsItem.Tiles -> error("laid out by addItems")
         is SettingsItem.Native -> natives.getOrPut(i.key) { i.create(nativeHost) }.also { it.refresh() }.view
