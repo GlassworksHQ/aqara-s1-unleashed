@@ -25,8 +25,8 @@ MISSING = {404, 410}
 def markdown_files(args):
     if args:
         return [Path(a) for a in args]
-    out = subprocess.run(['git', 'ls-files', '*.md'], cwd=ROOT, capture_output=True, text=True, check=True).stdout
-    return [ROOT / p for p in out.split()]
+    out = subprocess.run(['git', 'ls-files', '-z', '*.md'], cwd=ROOT, capture_output=True, text=True, check=True).stdout
+    return [ROOT / p for p in out.split('\0') if p]
 
 
 def status(url):
