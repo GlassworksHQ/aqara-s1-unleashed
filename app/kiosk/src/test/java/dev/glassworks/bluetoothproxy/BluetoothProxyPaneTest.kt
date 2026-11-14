@@ -35,10 +35,17 @@ class BluetoothProxyPaneTest {
         publishStates = {}, emit = {}, entitiesChanged = { rebuilds++ }, sendEvent = { _, _ -> },
     )
 
+    /** Records what each scanner it hands out is asked, in order. */
     private class Radio(var why: ScanFailure? = null) : ProxyRadio {
-        override val scanner = object : BleScanner {
-            override fun start(power: ScanPower, listener: BleScanner.Listener) {}
-            override fun stop() {}
+        val scanners = java.util.concurrent.CopyOnWriteArrayList<MutableList<String>>()
+        override fun newScanner(): BleScanner {
+            val calls = java.util.Collections.synchronizedList(ArrayList<String>())
+            scanners += calls
+            return object : BleScanner {
+                override fun start(power: ScanPower, listener: BleScanner.Listener) { calls += "start" }
+                override fun stop() { calls += "stop" }
+                override fun release() { calls += "release" }
+            }
         }
         override fun unavailable() = why
         override fun turnBluetoothOn() = false
@@ -78,6 +85,21 @@ class BluetoothProxyPaneTest {
         assertNull(first.bluetooth)
         assertTrue(second.bluetooth is BluetoothProxyEngine)
         assertTrue("a new engine for the new server", second.bluetooth !== engine)
+        pane.stop()
+    }
+
+    /** The old engine closes on its own thread, after the new one started: it must not touch the new one's scanner. */
+    @Test fun aNewServersEngineHasAScannerTheOldOneCantStop() {
+        val radio = Radio()
+        val pane = BluetoothProxyPane(ctx, radio, device)
+        pane.bind(server())
+        pane.start()
+        pane.bind(server())
+        val until = System.nanoTime() + 5_000_000_000L
+        while (radio.scanners[0].lastOrNull() != "release" && System.nanoTime() < until) Thread.sleep(10)
+        assertEquals("one scanner per engine", 2, radio.scanners.size)
+        assertEquals("the old engine released its own", "release", radio.scanners[0].last())
+        assertTrue("and never the new one's: ${radio.scanners[1]}", "release" !in radio.scanners[1] && "stop" !in radio.scanners[1])
         pane.stop()
     }
 

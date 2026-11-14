@@ -97,7 +97,7 @@ class BluetoothProxyPane(
     private fun attach() {
         val s = server ?: return
         if (engine != null || radio.unavailable() == ScanFailure.NO_BLE) return
-        engine = BluetoothProxyEngine(s, radio.scanner, ScanPower.LOW_LATENCY).also { s.bluetooth = it }
+        engine = BluetoothProxyEngine(s, radio.newScanner(), ScanPower.LOW_LATENCY).also { s.bluetooth = it }
     }
 
     private companion object {

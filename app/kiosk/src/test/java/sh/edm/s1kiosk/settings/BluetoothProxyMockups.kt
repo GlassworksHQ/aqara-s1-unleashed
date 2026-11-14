@@ -44,7 +44,7 @@ class BluetoothProxyMockups {
     private val app = RuntimeEnvironment.getApplication()
 
     private class Radio(val why: ScanFailure?) : ProxyRadio {
-        override val scanner = object : BleScanner {
+        override fun newScanner(): BleScanner = object : BleScanner {
             override fun start(power: ScanPower, listener: BleScanner.Listener) {}
             override fun stop() {}
         }

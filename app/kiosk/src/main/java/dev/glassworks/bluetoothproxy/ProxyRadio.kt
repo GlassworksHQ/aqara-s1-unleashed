@@ -12,7 +12,11 @@ import sh.edm.bluetoothproxy.ScanFailure
 
 /** The device's Bluetooth as the pane uses it: [AndroidProxyRadio] on a panel, a fake in tests. */
 interface ProxyRadio {
-    val scanner: BleScanner
+    /**
+     * A scanner of its own for one engine. Not shared: a closing engine stops and releases its
+     * scanner on its own thread, after the next engine may have started (#226 review).
+     */
+    fun newScanner(): BleScanner
     /** Why a scan can't run now, or null. Cheap, any thread. */
     fun unavailable(): ScanFailure?
     /** Turns Bluetooth on. False where Android doesn't let apps. */
@@ -23,8 +27,9 @@ interface ProxyRadio {
 
 class AndroidProxyRadio(context: Context) : ProxyRadio {
     private val app = context.applicationContext
+    /** For the questions only ([unavailable], [turnBluetoothOn]); it never scans. */
     private val android = AndroidBleScanner(app)
-    override val scanner: BleScanner get() = android
+    override fun newScanner(): BleScanner = AndroidBleScanner(app)
     override fun unavailable() = android.unavailable()
     override fun turnBluetoothOn() = android.turnBluetoothOn()
 
