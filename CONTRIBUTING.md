@@ -5,6 +5,7 @@
 - **Questions, ideas and frame bring-up** (porting Glassworks to a new device): [Discussions](https://github.com/GlassworksHQ/glassworks/discussions). Answers there stay searchable for the next person.
 - **Bugs and hardware reports:** an issue, from the templates below.
 - **Security problems:** privately, as [SECURITY.md](SECURITY.md) says. Not in Discussions or an issue.
+- **Anything else, in private:** [hi@glassworks.dev](mailto:hi@glassworks.dev).
 
 Bring-up notes that others can build on belong in the same PR as the work: in `frames/<id>/research/` for one device, or in [`docs/research/`](docs/research/README.md) for what applies to every frame. Everyone here follows the [code of conduct](CODE_OF_CONDUCT.md).
 
