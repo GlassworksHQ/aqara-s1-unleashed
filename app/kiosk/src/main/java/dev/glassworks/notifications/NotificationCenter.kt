@@ -73,8 +73,18 @@ class NotificationCenter(
     private var timer: Future<*>? = null
     private var closed = false
 
-    /** One call of the `notify` action. Throws [IllegalArgumentException] for Home Assistant to show. */
-    fun handle(message: String, title: String, data: String) {
+    companion object {
+        /** What a call gets while the pane is off or stopping. */
+        const val OFF = "Notifications are off on this panel"
+    }
+
+    /**
+     * One call of the `notify` action. Throws [IllegalArgumentException] for Home Assistant to show, and
+     * [IllegalStateException] once [close]d. Runs under the center's lock, so [close] waits for a call
+     * in flight, and no screen or sound effect starts after it.
+     */
+    fun handle(message: String, title: String, data: String): Unit = synchronized(lock) {
+        check(!closed) { OFF }
         when (val c = NotifyRequest.parse(message, title, data, haBase())) {
             is NotifyCommand.Clear -> if (store.clear(c.tag) != null) changed()
             is NotifyCommand.Post -> {

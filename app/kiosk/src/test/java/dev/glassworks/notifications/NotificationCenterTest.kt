@@ -129,7 +129,7 @@ class NotificationCenterTest {
         center.close()
         assertTrue(futures.last().isCancelled)
         val before = timers.size
-        center.handle("m", "garage", """{"timeout":30}""")
+        assertThrows("closed: it answers off", IllegalStateException::class.java) { center.handle("m", "garage", """{"timeout":30}""") }
         assertEquals("nothing is scheduled after close", before, timers.size)
     }
 

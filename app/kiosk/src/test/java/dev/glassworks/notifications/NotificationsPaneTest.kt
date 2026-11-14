@@ -193,7 +193,10 @@ class NotificationsPaneTest {
         pane.start()
         val center = NotificationsPane::class.java.getDeclaredField("center").apply { isAccessible = true }.get(pane) as NotificationCenter
         pane.stop()
-        center.handle("late", "Late", "")
+        val e = assertThrows(IllegalStateException::class.java) { center.handle("late", "Late", """{"priority":"critical"}""") }
+        assertEquals("Notifications are off on this panel", e.message)
         assertTrue(hub.state.cards.isEmpty())
+        assertTrue("no sound started after stop", played.isEmpty())
+        assertEquals("no screen hold after stop", emptyList<String>(), screen)
     }
 }

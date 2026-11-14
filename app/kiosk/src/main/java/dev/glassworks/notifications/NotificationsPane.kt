@@ -59,7 +59,7 @@ class NotificationsPane(
 
     private val entities = NotificationEntities(
         onNotify = { m, t, d ->
-            val c = synchronized(lock) { center } ?: throw IllegalStateException("Notifications are off on this panel")
+            val c = synchronized(lock) { center } ?: throw IllegalStateException(NotificationCenter.OFF)
             c.handle(m, t, d)
         },
         getDoNotDisturb = { prefs.doNotDisturb },
@@ -111,13 +111,15 @@ class NotificationsPane(
     }
 
     override fun stop() {
-        val c = synchronized(lock) {
+        val c = synchronized(lock) { center.also { center = null } } ?: return
+        // Close first, without the pane's lock: it waits for a notify call in flight (which may take the
+        // pane's lock for its sound or screen), and nothing starts after it. Then undo what it started.
+        c.close()
+        synchronized(lock) {
             criticalUp = false
             stopAlert()
             releaseScreen()
-            center.also { center = null }
-        } ?: return
-        c.close()
+        }
         hub.detach(c)
     }
 
