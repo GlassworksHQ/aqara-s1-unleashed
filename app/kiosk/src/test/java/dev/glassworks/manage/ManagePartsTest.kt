@@ -356,4 +356,15 @@ class ManagePartsTest {
         assertNotNull(c.current())
         assertEquals("the screen shows the code that is current", c.current(), screen.get())
     }
+
+    @Test fun sessionsEndedByAnAddressChangeDontComeBackWhenTheFileCantBeWritten() {
+        val file = File(dir, "s.json")
+        val store = SessionStore(file, clock = { now })
+        val (token, _) = store.create("Alex", SignedInWith.HOME_ASSISTANT, "Safari on Mac", true, "http://192.0.2.10:8123")
+        // Writing fails from here on (a directory where the temp file goes).
+        File(File(dir, "s.json.tmp"), "x").apply { parentFile!!.mkdirs() }.writeText("x")
+        assertNull(store.lookup(token, "http://192.0.2.11:8123")) // the address changed: every .10 session ends
+        // After a restart, with the address back at .10, the old session must not be on the disk.
+        assertNull(SessionStore(file, clock = { now }).lookup(token, "http://192.0.2.10:8123"))
+    }
 }

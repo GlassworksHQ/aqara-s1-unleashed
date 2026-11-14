@@ -23,8 +23,9 @@ data class PaneRow(val id: String, val title: String, val state: PaneState, val 
 
 /**
  * A pane's row from its settings section, the one the panel's menu draws ([dev.glassworks.pane.paneSections]):
- * the section's title, Can't run while [SettingsSection.unavailable] says why, Off while its on/off (#67,
- * [SettingsSection.master]) is off. Otherwise [running] says what the pane is doing ("Wake word …"); when the
+ * the section's title, Off while its on/off (#67, [SettingsSection.master]) is off, else Can't run while
+ * [SettingsSection.unavailable] says why. Off wins: a pane that is off offers nothing, also where it couldn't
+ * run anyway (the radio without the root helper). Otherwise [running] says what the pane is doing ("Wake word …"); when the
  * frame can't say, the row reads On with the switch's line under it. No section: the id in words, state unknown.
  */
 fun paneRow(id: String, section: SettingsSection?, links: List<Pair<String, String>> = emptyList(), running: () -> PaneState? = { null }): PaneRow {
@@ -32,8 +33,8 @@ fun paneRow(id: String, section: SettingsSection?, links: List<Pair<String, Stri
     val on = section?.master?.let { m -> runCatching { m.value() }.getOrNull() }
     val unavailable = section?.let { runCatching { it.unavailable() }.getOrNull() }
     val state = when {
-        unavailable != null -> PaneState(PaneState.Kind.CANT_RUN, unavailable)
         on == false -> PaneState(PaneState.Kind.OFF, "Turned off")
+        unavailable != null -> PaneState(PaneState.Kind.CANT_RUN, unavailable)
         else -> runCatching(running).getOrNull()
             ?: if (on == true) PaneState(PaneState.Kind.RUNNING, section.master?.detail.orEmpty(), chip = "On") else PaneState.UNKNOWN
     }

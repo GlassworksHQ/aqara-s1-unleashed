@@ -43,6 +43,14 @@ class ManagePanesTest {
         assertEquals("A Sendspin speaker", plain.state.detail)
     }
 
+    @Test fun offWinsOverCantRunSoAnOffPaneOffersNothing() {
+        // The radio switched off on a panel without the root helper: off, and unavailable too.
+        on = false
+        val row = paneRow("radio", section(unavailable = "Needs the root helper"), link)
+        assertEquals(PaneState.Kind.OFF, row.state.kind)
+        assertTrue("no links while it is off", row.links.isEmpty())
+    }
+
     @Test fun aPaneThatCantRunSaysWhy() {
         val row = paneRow("sendspin", section(unavailable = "Needs the wall base attached"))
         assertEquals(PaneState(PaneState.Kind.CANT_RUN, "Needs the wall base attached"), row.state)

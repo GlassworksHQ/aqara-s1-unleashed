@@ -110,16 +110,27 @@ class SessionStore(
     fun revoke(id: String): Revoked {
         val k = sessions.values.firstOrNull { it.id == id }?.key ?: return Revoked.NONE
         sessions.remove(k)
-        if (save()) return Revoked.DONE
-        val f = file ?: return Revoked.DONE
-        return if (runCatching { !f.exists() || f.delete() }.getOrDefault(false)) Revoked.DONE else Revoked.NOT_SAVED
+        return if (saveOrDelete()) Revoked.DONE else Revoked.NOT_SAVED
     }
 
-    /** Ends every session made for another HA address than [haBase]. */
+    /**
+     * Ends every session made for another HA address than [haBase], on disk too, so none comes back after a
+     * restart ([saveOrDelete]).
+     */
     private fun endOthers(haBase: String?) {
         if (sessions.values.none { it.haBase != haBase }) return
         sessions.values.removeAll { it.haBase != haBase }
-        save()
+        saveOrDelete()
+    }
+
+    /**
+     * Writes the file after a session ended. When it can't be written it is deleted, which signs every remembered
+     * browser out at the next start (the safe side). False: not even that worked.
+     */
+    private fun saveOrDelete(): Boolean {
+        if (save()) return true
+        val f = file ?: return true
+        return runCatching { !f.exists() || f.delete() }.getOrDefault(false)
     }
 
     private fun load() {
