@@ -66,12 +66,16 @@ class NotificationsHub {
     fun openPage(title: String, url: String) { center?.openPage(title, url) }
     fun clearAll() { center?.let { c -> state.list.forEach { c.dismiss(it.id) } } }
 
-    /** The settings page's "Send a test notification". False while the pane is off. */
+    /** The settings page's "Send a test notification". False while the pane is off, or stopping meanwhile. */
     fun sendTest(): Boolean {
         val c = center ?: return false
-        onReveal?.invoke()
-        c.handle(TEST_MESSAGE, TEST_TITLE, TEST_DATA)
-        return true
+        return try {
+            c.handle(TEST_MESSAGE, TEST_TITLE, TEST_DATA)
+            onReveal?.invoke()
+            true
+        } catch (e: IllegalStateException) {
+            false // the pane stopped between reading the center and the call: as if it were off
+        }
     }
 
     fun openList() { onOpenList?.invoke() }

@@ -199,4 +199,14 @@ class NotificationsPaneTest {
         assertTrue("no sound started after stop", played.isEmpty())
         assertEquals("no screen hold after stop", emptyList<String>(), screen)
     }
+
+    /** CodeRabbit on #228: a test sent while the pane stops answers false instead of throwing on the UI thread. */
+    @Test
+    fun aTestWhileThePaneStopsIsFalse() {
+        pane.start()
+        val center = NotificationsPane::class.java.getDeclaredField("center").apply { isAccessible = true }.get(pane) as NotificationCenter
+        center.close() // the switch's thread got there first
+        assertFalse(hub.sendTest())
+        assertTrue(hub.state.cards.isEmpty())
+    }
 }
