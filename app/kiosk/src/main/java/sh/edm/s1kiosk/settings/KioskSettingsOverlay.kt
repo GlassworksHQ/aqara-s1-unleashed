@@ -431,12 +431,11 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
 
     /**
      * The row's value follows a change made elsewhere: Home Assistant (the wake word select) or the Manage
-     * page (#242). The value view is always there for these rows (each has a value or a hint); the null
-     * branch is a guard only.
+     * page (#242). The value view is always there ([texts]); the null branch is a guard only.
      */
     private fun follow(r: LinearLayout, now: () -> String): LinearLayout = r.also {
         ((r.getChildAt(0) as? ViewGroup)?.getChildAt(1) as? TextView)?.let { value ->
-            live += { val n = now(); if (value.text != n) value.text = n }
+            live += { val n = now(); if (value.text != n) { value.text = n; value.visibility = if (n.isEmpty()) View.GONE else View.VISIBLE } }
         }
     }
 
@@ -629,7 +628,8 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
     private fun texts(name: String, value: String, color: Int) = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
         addView(g.text(16.5f, color).apply { text = name })
-        if (value.isNotEmpty()) addView(g.text(15f, MU).apply { text = value; setLineSpacing(0f, 1.15f) },
+        // Always there, gone while empty: a row that follows a change ([follow]) can fill it later.
+        addView(g.text(15f, MU).apply { text = value; setLineSpacing(0f, 1.15f); visibility = if (value.isEmpty()) View.GONE else View.VISIBLE },
             LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(6f) })
     }
 

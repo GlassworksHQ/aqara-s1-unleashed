@@ -113,6 +113,20 @@ class ManageSettingsTest {
         assertTrue(page.contains("action=\"/action/restart\""))
     }
 
+    @Test fun aFailedTextKeepsWhatWasTypedAndThePageBehindIsInert() {
+        val zoom = SettingsSection("dashboard", "Dashboard", listOf(
+            SettingsItem.Text("Zoom", "Auto", SettingsItem.TextKind.DECIMAL, { "1.5" }) { _, d -> d(null) }))
+        f.statusFn = { f.status.copy(sections = listOf(zoom)) }
+        val b = signedIn()
+        val r = b.post("/settings", form(b, "dashboard", "Zoom", "value" to "1,25"))
+        assertEquals(422, r.status)
+        val page = r.text()
+        assertTrue("what was typed, not the stored value", page.contains("name=\"value\" value=\"1,25\""))
+        assertTrue(page.contains("role=\"dialog\" aria-modal=\"true\" aria-labelledby=\"dlg-t\""))
+        assertTrue(page.contains("<aside class=\"side\" inert>") && page.contains("<main class=\"main\" inert>"))
+        assertFalse("no dialog, nothing inert", b.get("/dashboard").text().contains(" inert>"))
+    }
+
     @Test fun anItemThePageNoLongerHasChangesNothing() {
         val b = signedIn()
         assertEquals("/screen?done=gone", b.post("/settings", form(b, "screen", "Brightness", "value" to "on")).headers["Location"])

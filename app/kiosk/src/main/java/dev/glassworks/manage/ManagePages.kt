@@ -97,9 +97,11 @@ ${if (problem != null) """<p class="err">${esc(problem)}</p>""" else ""}
     private fun frame(s: PanelStatus, current: String, title: String, viewer: Viewer, main: String, notice: String? = null, overlay: String = ""): String {
         val n = nav(s, current, viewer)
         val note = notice?.let { """<div class="notice" role="status"><i class="dot ok"></i>${esc(it)}</div>""" }.orEmpty()
-        val body = """<aside class="side">$n</aside>
-<header class="top">${PageShell.mark(Look.DONE, "m")}<span>${esc(if (current == "/") s.name else title)}</span><details class="menu"><summary aria-label="Menu"><span></span><span></span></summary><div class="drop">$n</div></details></header>
-<main class="main">$note$main</main>$overlay"""
+        // Under a dialog the page is inert: Tab stays in the dialog, as in the panel's sheet.
+        val inert = if (overlay.isEmpty()) "" else " inert"
+        val body = """<aside class="side"$inert>$n</aside>
+<header class="top"$inert>${PageShell.mark(Look.DONE, "m")}<span>${esc(if (current == "/") s.name else title)}</span><details class="menu"><summary aria-label="Menu"><span></span><span></span></summary><div class="drop">$n</div></details></header>
+<main class="main"$inert>$note$main</main>$overlay"""
         return PageShell.document("$title · ${s.name}", MANAGE_CSS + DIALOG_CSS, body)
     }
 
@@ -169,8 +171,8 @@ ${if (problem != null) """<p class="err">${esc(problem)}</p>""" else ""}
     sealed interface Dialog {
         val key: String
 
-        /** Change the item at [key]; [problem]: why the last try didn't save. */
-        class Edit(override val key: String, val problem: String? = null) : Dialog
+        /** Change the item at [key]; [problem]: why the last try didn't save, and [typed]: what was sent then, shown again. */
+        class Edit(override val key: String, val problem: String? = null, val typed: String? = null) : Dialog
 
         /** Ask [ask] before setting the switch at [key] to [value] (`on`/`off`). */
         class Confirm(override val key: String, val value: String, val ask: SettingsItem.Confirm) : Dialog
@@ -245,11 +247,11 @@ ${if (problem != null) """<p class="err">${esc(problem)}</p>""" else ""}
     private fun dialog(v: Viewer, path: String, sec: SettingsSection, d: Dialog): String {
         val item = SettingsChange.find(sec, d.key) ?: return ""
         fun sheet(title: String, hint: String, body: String, action: String?, problem: String?) =
-            """<div class="scrim"><form class="dlg" method="post" action="/settings">${fields(v, sec.id, d.key)}<h2>${esc(title)}</h2>""" +
+            """<div class="scrim"><form class="dlg" method="post" action="/settings" role="dialog" aria-modal="true" aria-labelledby="dlg-t">${fields(v, sec.id, d.key)}<h2 id="dlg-t">${esc(title)}</h2>""" +
                 (if (hint.isNotEmpty()) "<p>${esc(hint)}</p>" else "") + body + (problem?.let { """<p class="err" role="alert">${esc(it)}</p>""" }.orEmpty()) +
                 """<div class="dbtns"><a class="pill" href="${esc(path)}">Cancel</a>${action?.let { """<button class="pill primary" type="submit">${esc(it)}</button>""" }.orEmpty()}</div></form></div>"""
         fun chips(now: String, options: List<Pair<String, String>>) = """<div class="pcs">""" + options.joinToString("") { (value, name) ->
-            """<button class="pc${if (value == now) " on" else ""}" type="submit" name="value" value="${esc(value)}"${if (value == now) " aria-current=\"true\"" else ""}>${esc(name)}</button>"""
+            """<button class="pc${if (value == now) " on" else ""}" type="submit" name="value" value="${esc(value)}"${if (value == now) " aria-current=\"true\" autofocus" else ""}>${esc(name)}</button>"""
         } + "</div>"
         return when (d) {
             is Dialog.Confirm -> sheet(d.ask.title, d.ask.detail,
@@ -257,7 +259,7 @@ ${if (problem != null) """<p class="err">${esc(problem)}</p>""" else ""}
             is Dialog.Edit -> when (item) {
                 is SettingsItem.Text -> {
                     val mode = when (item.kind) { SettingsItem.TextKind.NUMBER -> "numeric"; SettingsItem.TextKind.DECIMAL -> "decimal"; SettingsItem.TextKind.ADDRESS -> "url"; else -> "text" }
-                    sheet(item.title, item.hint, """<input class="fld" name="value" value="${esc(safe { item.value() })}" placeholder="${esc(item.hint)}" inputmode="$mode" autocomplete="off" spellcheck="false" autofocus aria-label="${esc(item.title)}">""",
+                    sheet(item.title, item.hint, """<input class="fld" name="value" value="${esc(d.typed ?: safe { item.value() })}" placeholder="${esc(item.hint)}" inputmode="$mode" autocomplete="off" spellcheck="false" autofocus aria-label="${esc(item.title)}">""",
                         "Save", d.problem)
                 }
                 is SettingsItem.Duration -> {
@@ -271,7 +273,7 @@ ${if (problem != null) """<p class="err">${esc(problem)}</p>""" else ""}
                     val (from, to) = SettingsChange.parseRange(now) ?: (22 * 60 to 7 * 60)
                     fun time(name: String, label: String, min: Int) =
                         """<label class="tm"><span>$label</span><input type="time" name="$name" value="${SettingsChange.hhmm(min)}" step="${item.stepMin * 60}" required></label>"""
-                    sheet(item.title, "", """<label class="sw"><input type="checkbox" name="on" value="1"${if (now.isNotBlank()) " checked" else ""}> On</label>""" +
+                    sheet(item.title, "", """<label class="sw"><input type="checkbox" name="on" value="1"${if (now.isNotBlank()) " checked" else ""} autofocus> On</label>""" +
                         """<div class="tms">${time("from", "From", from)}${time("to", "To", to)}</div>""", "Save", d.problem)
                 }
                 else -> ""

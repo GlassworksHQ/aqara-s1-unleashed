@@ -82,6 +82,18 @@ class SettingsOverlayTest {
         assertFalse("the switch follows", toggle.checked)
     }
 
+    /** A row whose value and hint are empty still follows: its value view is there, gone until it has words. */
+    @Test
+    fun anEmptyRowFollowsAValueSetElsewhere() {
+        var now = ""
+        val o = one(listOf(SettingsItem.Text("Allowed", "", SettingsItem.TextKind.ADDRESS, { now }) { _, d -> d(null) }))
+        assertFalse(shown(o, "192.0.2.20"))
+        now = "192.0.2.20"
+        o.refresh()
+        Mockup.idle()
+        assertTrue(shown(o, "192.0.2.20"))
+    }
+
     @Test
     fun aSwitchAppliesWhenTapped() {
         val o = open()

@@ -283,7 +283,8 @@ class ManageServer(
         event(if (problem == null) "${who(s)} changed $what" else "${who(s)} couldn't change $what: $problem")
         if (problem == null) return HttpResponse.seeOther(if (SettingsChange.restarts(item)) "$page?done=restart" else page)
         // As the panel: a typed value, a duration, a choice or a window keeps its sheet open with why; the rest say it on the page.
-        val dialog = if (item is SettingsItem.Switch || item is SettingsItem.Slider) null else ManagePages.Dialog.Edit(key, problem)
+        val dialog = if (item is SettingsItem.Switch || item is SettingsItem.Slider) null
+            else ManagePages.Dialog.Edit(key, problem, typed = raw.takeIf { item is SettingsItem.Text })
         return settingsPage(host.status(), viewer, page.removePrefix("/"), dialog, problem = if (dialog == null) problem else null, code = 422)!!
     }
 
