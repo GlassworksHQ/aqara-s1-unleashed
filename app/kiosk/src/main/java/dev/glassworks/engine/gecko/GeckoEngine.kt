@@ -115,6 +115,8 @@ class GeckoEngine(
         GeckoPage(activity, host, background).also { it.start() }
 
     /** GeckoView's manifest runs `GeckoChildProcessServices$tab0..39` in `:sandboxed_tab_<flags><n>`. */
+    override val name: String get() = "GeckoView ${org.mozilla.geckoview.BuildConfig.MOZ_APP_VERSION}"
+
     override fun isContentProcess(processName: String) =
         processName.substringAfter(':', "").startsWith("sandboxed_tab")
 

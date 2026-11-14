@@ -104,7 +104,7 @@ class EspHomeApiTest {
         val identity = DeviceIdentity(
             name = "s1-panel", friendlyName = "S1 Panel", macAddress = "02:11:22:33:44:55",
             esphomeVersion = "2026.10.2", compilationTime = "S1 Kiosk test", manufacturer = "Aqara",
-            model = "Panel Hub S1 Plus (S1 Kiosk)", voiceFeatures = 61,
+            model = "Panel Hub S1 Plus (S1 Kiosk)", voiceFeatures = 61, webserverPort = 8099,
         )
         val key = ByteArray(32) { (it * 7 + 1).toByte() }
         val keyB64 = Base64.getEncoder().encodeToString(key)
@@ -204,6 +204,8 @@ class EspHomeApiTest {
             assertEquals("S1 Panel", di.getString("friendly_name"))
             assertEquals("02:11:22:33:44:55", di.getString("mac"))
             assertEquals(61, di.getInt("voice_flags"))
+            // HA builds the device page's "Visit" link from it (#33).
+            assertEquals(8099, di.getInt("webserver_port"))
             assertEquals(61, r.getInt("caps_voice_flags"))
             assertEquals(1, r.getJSONObject("caps_sendspin").getInt("flags"))
             assertEquals("A".repeat(42) + "Q", r.getJSONObject("caps_sendspin").getString("client_id"))

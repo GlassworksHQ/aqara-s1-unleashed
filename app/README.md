@@ -224,7 +224,7 @@ python3 tools/gecko-eval/gecko_eval.py 'JSON.stringify({w: innerWidth, h: innerH
 ```
 
 Gecko's prefs are written to `files/geckoview-config.yaml` at startup and logged under the
-`S1Kiosk` tag. Sign-in and HA discovery log under `S1Auth` / `S1Discovery`, the Music Assistant
+`S1Kiosk` tag. Sign-in and HA discovery log under `S1Auth` / `S1Discovery`, the Manage page under `S1Manage` ([docs/manage.md](../docs/manage.md); its own log keeps the `S1…` lines for 7 days in `files/manage/log/`), the Music Assistant
 player under `S1Sendspin` (with a `sync:` line every 10 s while playing). The Wi-Fi scans the app
 starts while the screen is off log under `S1Kiosk.Wifi`. None of them log tokens or keys. Page
 console output goes to logcat (`Isolated Web Content` / `GeckoConsole`).

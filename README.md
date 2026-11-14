@@ -151,6 +151,7 @@ What works today, on v0.4.1. "Verified" means tested on a real panel in a real h
 | Aqara cloud and bloat disabled (reversible) | ✅ Works |
 | Boot splash and animation | 🧪 The Glassworks redraw has not yet run on a panel. The Glass Tile one before it works |
 | Web installer, command-line installer, undo | ✅ Verified end to end (firmware 4.5.80); boot patch tested on two firmware versions |
+| Manage page in the browser (`:8099`, sign in through Home Assistant): status, log, diagnostics, signed-in browsers ([guide](docs/manage.md)) | 🧪 New · not yet checked on a panel; settings are read-only for now |
 | Panel health in Home Assistant: CPU, temperature, RAM, storage, Wi-Fi, uptime ([entities](docs/esphome.md#diagnostics)) | 🧪 New · not yet checked on a panel |
 | App updates from Home Assistant | ✅ Works from v0.4.1 on ([one manual update first](#updates) on older versions) |
 | Time zone kept across reboots | ✅ Works (needs the boot software from v0.4.0) |
