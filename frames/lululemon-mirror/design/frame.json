@@ -227,6 +227,7 @@
       }
     ]
   },
+  "render": "render.webp",
   "display": {
     "width": 1080,
     "height": 1920
