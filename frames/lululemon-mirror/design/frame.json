@@ -6,7 +6,7 @@
   "status": "planned",
   "summary": "A full-length mirror with a 40-inch portrait screen behind it. The original version takes a new Android image over fastboot.",
   "tagline": "A 40-inch mirror with Android behind it.",
-  "notice": "Only the original version works: a Qualcomm board, stock software 1.x and a screen of about 40 inches. The later version (software 5.x, about 43 inches, a blue button on the top edge) has a locked NXP board.",
+  "notice": "Not installable yet: today's app needs Android 8.0, and the Mirror runs 6.0.1. Installing will erase lululemon's software, with no backup. Only the original 40-inch model is a target; the later 43-inch one is locked.",
   "model": {
     "body": {
       "shape": "rect",
