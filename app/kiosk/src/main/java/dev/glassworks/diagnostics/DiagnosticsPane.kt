@@ -87,7 +87,6 @@ class DiagnosticsPane internal constructor(
     @Volatile var lastSample: Sample? = null
         private set
 
-    /** Why the app last restarted, in words, or null while the pane doesn't run. */
     /** Why the app last restarted, as `ApplicationExitInfo.REASON_*`, or null when Android can't say (before 11). */
     @Volatile var lastExitReason: Int? = null
         private set

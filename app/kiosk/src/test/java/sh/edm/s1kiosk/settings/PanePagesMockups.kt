@@ -189,6 +189,22 @@ class PanePagesMockups {
         Mockup.save(name, o)
     }
 
+    /** #249: a chip word wider than the backstop (GroupedRail.CHIP_WORD_MAX_DP) shortens; no pane says one this long today. */
+    @Test
+    fun chipBackstop() {
+        assumeTrue("set -Ps1MockupDir=<dir> to write the mock-ups", Mockup.dir != null)
+        fun master(on: Boolean) = dev.glassworks.pane.SettingsItem.Switch("x", "", { on }) { _, d -> d(null) }
+        val long = dev.glassworks.pane.PaneState(dev.glassworks.pane.PaneState.Kind.RUNNING, "", chip = "Waiting for Bluetooth to turn on")
+        val o = Mockup.show(KioskSettingsOverlay(Mockup.activity()))
+        o.show(KioskSettingsOverlay.Model(listOf(
+            dev.glassworks.pane.SettingsSection("assist", "Voice", listOf(dev.glassworks.pane.SettingsItem.Note { "Voice's page" }), master = master(true)),
+            dev.glassworks.pane.SettingsSection("bluetooth-proxy", "Bluetooth proxy", listOf(dev.glassworks.pane.SettingsItem.Note { "A word longer than any today's shortens with an ellipsis; the row stays inside the rail." }), master = master(true), status = { long }),
+            dev.glassworks.pane.SettingsSection("radio", "Radio", listOf(dev.glassworks.pane.SettingsItem.Note { "" }), master = master(true)),
+        ), "0.4.3", setOf("assist", "bluetooth-proxy", "radio")))
+        Mockup.idle()
+        shot("249-chip-backstop", o, "bluetooth-proxy")
+    }
+
     @Test
     fun mockups() {
         assumeTrue("set -Ps1MockupDir=<dir> to write the mock-ups", Mockup.dir != null)

@@ -176,6 +176,8 @@ class AssistPaneTest {
         interleave = true
         server.voice!!.configuration() // late: past the first pick's window
         picker[0]!!.join(2_000)
+        // A reconnect the late read wrongly asked for lands first (#249 verifier: counted after, it hid the bug).
+        Thread.sleep(100)
         val before = reconnects
         server.voice!!.configuration() // the newer pick's first read
         Thread.sleep(100)

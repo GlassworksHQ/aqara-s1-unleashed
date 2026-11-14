@@ -122,6 +122,9 @@ class AssistPane(
      * async_satellite_config_updated, read 2026-11-14; the root's panel run saw no_wake_word after one).
      * So Home Assistant is asked to connect again twice: now, and once more after its next read. Only
      * within [REREAD_WINDOW_MS] of the pick: a read much later (HA was down) is HA's own and buys nothing.
+     * The trade-off: if HA is down for more than that when the word is picked, its select may read
+     * no_wake_word after it comes back, until its next configuration read (any later reconnect) takes the
+     * panel's word.
      */
     fun useWakeWord(id: String) {
         if (id == prefs.wakeWord) return
