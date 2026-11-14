@@ -9,6 +9,7 @@
     ".": "./src/index.ts"
   },
   "scripts": {
+    "panes": "node scripts/panes.mjs",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },

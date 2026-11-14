@@ -421,7 +421,8 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
         is SettingsItem.Note -> g.text(14.5f, MU).apply { text = i.text(); setLineSpacing(0f, 1.25f); setPadding(0, px(14f), 0, px(14f)) }
         is SettingsItem.Info -> infoRow(i)
         is SettingsItem.Choice -> row(i.title, choiceName(i), chevron = true, dim = false) { sheet.choice(i) { build() } }.also { r ->
-            // The picked one's name follows a change made elsewhere (Home Assistant's wake word select).
+            // The picked one's name follows a change made elsewhere (Home Assistant's wake word select). The
+            // value view is always there today (a choice always has a name); the null branch is a guard only.
             ((r.getChildAt(0) as? ViewGroup)?.getChildAt(1) as? TextView)?.let { value ->
                 live += { val n = choiceName(i); if (value.text != n) value.text = n }
             }

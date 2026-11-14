@@ -1,0 +1,10 @@
+{
+  "id": "sendspin",
+  "name": "Sendspin",
+  "does": "Synced Music Assistant player.",
+  "requires": [
+    "speaker"
+  ],
+  "status": "beta",
+  "docs": "docs/sendspin.md"
+}

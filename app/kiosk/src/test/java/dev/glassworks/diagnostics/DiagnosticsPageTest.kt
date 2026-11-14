@@ -45,9 +45,10 @@ class DiagnosticsPageTest {
     }
 
     @Test fun theFooterAndTheWords() {
-        assertEquals("Lines show the last hour. Last app restart: app updated. Web content processes: 3.", DiagnosticsPage.footer("app updated", 3))
-        assertEquals("Lines show the last hour.", DiagnosticsPage.footer(null, null))
-        assertEquals("Android 10 can't say why: left out", "Lines show the last hour. Web content processes: 3.", DiagnosticsPage.footer("unknown", 3))
+        assertEquals("Lines show the last hour. Last app restart: app updated. Web content processes: 3.",
+            DiagnosticsPage.footer(android.app.ApplicationExitInfo.REASON_PACKAGE_UPDATED, 3))
+        assertEquals("Android 10 can't say why: left out", "Lines show the last hour.", DiagnosticsPage.footer(null, null))
+        assertEquals("a reason the words don't know still shows", "Lines show the last hour. Last app restart: unknown.", DiagnosticsPage.footer(999, null))
         assertEquals(listOf("Excellent", "Good", "Fair", "Weak"), listOf(-45, -58, -65, -80).map(DiagnosticsPage::wifiQuality))
         assertEquals(listOf("5 min", "2 h 10 min", "1 d 0 h"), listOf(5L, 130L, 24 * 60L).map { DiagnosticsPage.duration(it * 60_000) })
     }

@@ -25,10 +25,15 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 # graded run, `ref-panes-off` and `ref-<pane>-on` for the panes. They aren't real use.
 REF_LABEL = "ref-"
 SETTLE_GAP_MS = 750
+VIEW_DEADLINE_S = 300                 # perfrun.py's defaults, for report.md's words
+STAGE_IDLE_S = 180
 # The page's times reach logcat's clock through its log line, which logcat stamps a few ms late
 # (nav start mapped 11 to 23 ms before PageStart on the S1, 2026-11-12). The frame that shows the
 # first paint may so appear up to this much before it; three refreshes at 60 Hz.
 PAINT_SLACK_MS = 50
+# Protocol 6 (#202): the HLS copies of the camera pages (page/tiers.json FALLBACK), measured as detail.
+with open(os.path.join(HERE, "page", "tiers.json")) as _f:
+    CAMERA_FALLBACK = json.load(_f).get("FALLBACK", {})
 FAMILIES = ["css-transform", "css-opacity", "svg", "canvas2d", "ha-cards"]
 
 
@@ -295,19 +300,57 @@ def camera_run(line, tier):
         return None
     streams = line.get("streams") or []
     played = [s for s in streams if s.get("first_frame_ms") is not None and s.get("shown_pct") is not None]
+    # Streams that showed a frame but whose stalls or gaps couldn't be measured: their receiver
+    # reported no freeze counts (stall_total_ms null), or there was no span to measure gaps over (one
+    # sample, nothing decoded: max_gap_ms null). Both are n/a, never 0.
+    unreported = [s for s in played if s.get("stall_total_ms") is None or s.get("max_gap_ms") is None]
     whole = len(played) == len(streams) and len(streams) >= (line.get("expected") or 0)
     return {
+        # The path the frontend played the graded streams on: web_rtc since protocol 6, hls before
+        # (protocol 5's lines don't say; HLS was the only path then).
+        "path": line.get("path") or "hls",
         "first_frame_ms": max(s["first_frame_ms"] for s in played) if whole and played else None,
         "shown_pct": min(s["shown_pct"] for s in played) if whole and played else None,
-        "max_gap_ms": max((s.get("max_gap_ms") or 0) for s in played) if whole and played else None,
-        "stall_total_ms": max((s.get("stall_total_ms") or 0) for s in played) if whole and played else None,
+        # A stream whose stalls or gaps are n/a (above) makes the run's n/a too, not 0, and its camera
+        # level not measured (grade.camera_level).
+        "max_gap_ms": max(s["max_gap_ms"] for s in played) if whole and played and not unreported else None,
+        "stall_total_ms": max(s["stall_total_ms"] for s in played) if whole and played and not unreported else None,
+        **({"stalls_reported": False} if whole and played and unreported else {}),
         "streams": len(streams), "expected": line.get("expected"), "window_ms": line.get("window_ms"),
         "detail": [{k: s.get(k) for k in ("w", "h", "first_frame_ms", "shown_pct", "max_gap_ms", "stall_total_ms", "stall_presented",
-                                            "frames", "decoded", "dropped", "waiting", "source")} for s in streams],
+                                            "frames", "decoded", "dropped", "waiting", "source", "webrtc", "others",
+                                            "gaps_source", "callback_gaps", "span_ms", "stalls_at")}
+                   for s in streams],
         # Detail, not graded: the streams' HLS fetches in the window (stats.js hlsFetches), and the
         # decoders the view got (reference_run adds `media`, from logcat).
         "fetches": line.get("fetches"),
     }
+
+
+def camera_fallback_runs(c):
+    """One run's HLS fallback views (#202, detail): per camera page, its HLS copy's camera_run, with
+    the decoders it got and the view's error if it failed. Empty before protocol 6."""
+    out = {}
+    for view, e in (c.get("fallback") or {}).items():
+        page = CAMERA_FALLBACK.get(view)
+        if not page:
+            continue
+        r = camera_run(e.get("camera"), page) or {"first_frame_ms": None, "shown_pct": None, "max_gap_ms": None,
+                                                 "stall_total_ms": None, "streams": 0, "path": "hls"}
+        r.update(view=view, media=(c.get("media") or {}).get(view), error=e.get("error") or (
+            c.get("fallback_error") if not e.get("done") else None))
+        out[page] = r
+    return out
+
+
+def camera_fallback_summary(runs, tier):
+    """A page's HLS fallback over the runs (#202): each run's worst stream, and the level the camera
+    bars would give it. Detail: the grade uses the graded path only."""
+    fb = [r["camera_fallback"][tier] for r in runs if tier in (r.get("camera_fallback") or {})]
+    if not fb:
+        return None
+    return {"path": "hls", "runs": fb, "levels": [G.camera_level(x) for x in fb],
+            "level": G.median_level(G.camera_level(x) for x in fb)}
 
 
 def arrivals(step):
@@ -409,12 +452,43 @@ def scroll_frames(swipes):
             "first_scroll_ms": statistics.median(firsts) if firsts else None}
 
 
+# Pre-release protocol 8 was Clarity v1's release candidate (#205: s1rtc5 ran it on 2026-11-13): the
+# same measurement as v1's protocol 1, before its lines carried `clarity`. Its lines read as v1.
+RC_PROTOCOL = 8
+
+
+def page_version(page):
+    """(protocol, clarity) of a view's page line: v1's say `clarity: 1`; v1's release candidate
+    (RC_PROTOCOL, no marker, with its `usable.busy_ms`) reads as v1; any other line without the marker is pre-release
+    (clarity None, its protocol as it said), whatever its number: pre-release protocols 1 to 8 reuse
+    the numbers v1 starts again from."""
+    if not page:
+        return None, None
+    if page.get("clarity") is not None:
+        return page.get("protocol"), page["clarity"]
+    if page.get("protocol") == RC_PROTOCOL and (page.get("usable") or {}).get("busy_ms") is not None:
+        # The one bypass of the marker, and only for the release candidate's own lines: they carry
+        # `usable.busy_ms`, which the harness added with it (#205 round 10). An earlier line that said
+        # protocol 8 (none ran outside #205's branch) stays pre-release.
+        return G.PROTOCOL_VERSION, G.CLARITY
+    return page.get("protocol"), None
+
+
+def is_v1(ref):
+    """Every page of the graded runs ran this rubric's protocol, in this Clarity version."""
+    return bool(ref) and ref.get("protocols") == [G.PROTOCOL_VERSION] and ref.get("clarity") == [G.CLARITY]
+
+
 def tier_run(tier, entry, presents_ms):
     """One reference dashboard in one run: open the view (load), live updates (frames), tap (INP),
     scroll (frames while swiping)."""
     page, step = entry.get("page"), entry.get("step")
+    proto, clarity = page_version(page)
     out = {"tier": tier, "css": page and page.get("css"), "dpr": page and page.get("dpr"),
-           "protocol": page and page.get("protocol")}
+           "protocol": proto, "clarity": clarity}
+    if entry.get("timed_out_s") and not entry.get("error"):
+        return dict(timed_out(tier, tier_run(tier, dict(entry, timed_out_s=None), presents_ms) if page else out,
+                              entry["timed_out_s"]), timed_out_after=entry.get("timed_out_after"))
     if entry.get("error") or not page:
         return dict(out, error=entry.get("error") or "incomplete")
     # A lost updates step (smoke7: cut off in logcat) leaves only the live updates unmeasured.
@@ -428,6 +502,13 @@ def tier_run(tier, entry, presents_ms):
         else:
             out["load_ms"] = round(when - P.page_to_mono_ms(page, page.get("nav_ms") or 0))
             out["first_screen_cards"] = page["usable"].get("first_screen_cards")
+        # Detail (#202): when the first screen was drawn, and how long the main thread's probes
+        # waited each second until it was free (the usable time waits for that).
+        u = page["usable"]
+        if u.get("rendered_tick_ms") is not None:
+            out["drawn_ms"] = round(u["rendered_tick_ms"] - (page.get("nav_ms") or 0))
+        if u.get("busy_ms") is not None:
+            out["busy_ms"] = u["busy_ms"]
     elif not page.get("load_ms") or not page.get("fcp_ms"):
         out["load_error"] = "no load event or first paint reported"
     else:
@@ -487,6 +568,38 @@ def tier_run(tier, entry, presents_ms):
     return out
 
 
+def timed_out(tier, out, deadline_s):
+    """A view that didn't finish within the runner's deadline (#202): what it measured stands, and each
+    task it didn't measure in this run is measured as failed, not missing: it didn't finish. Open and
+    tap take the deadline as their value (nothing answered within it); scroll, live updates and the
+    cameras a `timed_out` record, which the graders read as below fluid."""
+    out = {k: v for k, v in out.items() if k != "error"}
+    for k in ("inp_ms", "input_method", "fcp_ms", "nodes", "cards", "load_ms", "updates", "latency", "arrivals",
+              "camera_run", "updates_run", "scroll"):
+        out.setdefault(k, None)                  # a view that timed out before it was usable reported none
+    ms = round(deadline_s * 1000)
+    out["timed_out_s"] = deadline_s
+    out["timed_out_tasks"] = []
+    if out.get("load_ms") is None:
+        out.update(load_ms=ms, load_error=None)
+        out["timed_out_tasks"].append("open")
+    if out.get("inp_ms") is None:
+        out["inp_ms"] = ms
+        out["timed_out_tasks"].append("tap")
+    if not out.get("scroll"):
+        out.update(scroll={"timed_out": True, "p95_ms": None, "jank_pct": None, "frozen_pct": None, "fps": None, "n": 0},
+                   scroll_error=None, scroll_source="timed out")
+        out["timed_out_tasks"].append("scroll")
+    if not out.get("updates_run"):
+        out.update(updates_run={"timed_out": True}, updates_error=None)
+        out["timed_out_tasks"].append("updates")
+    if tier in G.CAMERA_PAGES and not out.get("camera_run"):
+        out["camera_run"] = {"timed_out": True, "first_frame_ms": None, "shown_pct": None, "max_gap_ms": None,
+                             "stall_total_ms": None, "streams": 0, "detail": []}
+        out["timed_out_tasks"].append("camera")
+    return out
+
+
 def reference_run(c):
     """One graded run: restart (protocol 4: process start to the reference dashboard the kiosk comes
     back to being usable; before it, to engine ready), then each reference dashboard."""
@@ -525,8 +638,16 @@ def reference_run(c):
     for t, r in tiers.items():
         if r.get("camera_run") is not None:
             r["camera_run"]["media"] = (c.get("media") or {}).get(t)
+    base["camera_fallback"] = camera_fallback_runs(c)
     base["bad_page_lines"] = c.get("bad_page_lines") or 0
     base["lost_scroll_steps"] = sum((e.get("lost_scroll_steps") or 0) for e in (c.get("tiers") or {}).values())
+    # Views that timed out (#202): what they measured stands, the rest fails (timed_out above); the
+    # runner restarted the kiosk and opened the run's other views.
+    base["timed_out"] = list(c.get("timed_out") or [])
+    # The CPU clock while each view was open (detail, #244), in kHz per core per sample.
+    base["cpu_khz"] = [[v, t, by_cpu(ks)] for v, t, ks in c.get("cpu_khz") or []]
+    base["cpu_max_khz"] = by_cpu(c.get("cpu_max_khz"))
+    base["cpu_clock_s"] = c.get("cpu_clock_s")
     order = c.get("order") or list(c.get("tiers") or {})
     for t, r in tiers.items():
         r["position"] = order.index(t) + 1 if t in order else None
@@ -540,8 +661,9 @@ median_band = G.median_band
 
 
 def frame_facts(st):
-    """The frame stats a band reads (and their count)."""
-    return {k: st.get(k) for k in ("p95_ms", "jank_pct", "frozen_pct", "fps", "n")}
+    """The frame stats a band reads (and their count); a timed-out view's run says so (#202)."""
+    return dict({k: st.get(k) for k in ("p95_ms", "jank_pct", "frozen_pct", "fps", "n")},
+                **({"timed_out": True} if st.get("timed_out") else {}))
 
 
 def by_position(rs):
@@ -574,6 +696,14 @@ def reference_summary(all_runs):
             "input_method": sorted({x["input_method"] for x in rs if x["input_method"]}),
             "load_ms": P.spread([x.get("load_ms") for x in rs]),
             "load_errors": [x["load_error"] for x in rs if x.get("load_error")],
+            # Detail (#202): the first screen drawn, from the navigation; `load_ms` waits for the main
+            # thread to be free as well.
+            "drawn_ms": P.spread([x.get("drawn_ms") for x in rs]),
+            # The CPU clock while this view was open (detail, #244): every core's samples, in MHz.
+            "cpu_mhz": P.spread([k / 1000 for r in runs for v, _, ks in r.get("cpu_khz") or [] if v == t for k in ks.values()]),
+            # Each CPU on its own, by its number (a big.LITTLE CPU's clusters run at different clocks).
+            "cpu_mhz_by_core": {i: P.spread([ks[i] / 1000 for r in runs for v, _, ks in r.get("cpu_khz") or [] if v == t and i in ks])
+                                for i in sorted({i for r in runs for v, _, ks in r.get("cpu_khz") or [] if v == t for i in ks}, key=int)},
             # Frames: each run's band, then the median band. Three runs each poor for a different
             # reason are poor, not the band of per-measure medians.
             "scroll": {k: P.spread([f.get(k) for f in sc]) for k in ("p95_ms", "jank_pct", "frozen_pct", "fps", "n")},
@@ -606,6 +736,11 @@ def reference_summary(all_runs):
             "camera_runs": [x["camera_run"] for x in rs if x.get("camera_run")],
             "camera_levels": [G.camera_level(x["camera_run"]) for x in rs if x.get("camera_run")],
             "camera_level": G.median_level(G.camera_level(x["camera_run"]) for x in rs if x.get("camera_run")),
+            # Runs in which this view didn't finish within the runner's deadline, and the tasks that
+            # failed for it (#202): measured, not missing.
+            "timed_out_runs": sum(1 for x in rs if x.get("timed_out_s")),
+            "timed_out_tasks": sorted({k for x in rs for k in x.get("timed_out_tasks") or []}),
+            "camera_fallback": camera_fallback_summary(runs, t),
             "updates_levels": [G.update_level(x["updates_run"]) for x in rs if x.get("updates_run")],
             "updates_level": G.median_level(G.update_level(x["updates_run"]) for x in rs if x.get("updates_run")),
             "swipes_during_updates": [x.get("swipes_during_updates") for x in rs if x.get("scroll")],
@@ -635,10 +770,20 @@ def reference_summary(all_runs):
         "launch": sorted({r["launch"] for r in runs if r.get("launch")}),
         "own_page_states": sorted({r["own_page_state"] for r in runs if r.get("own_page_state")}),
         "orders": [r.get("order") for r in runs],
+        # The CPU's top clock (cpuinfo_max_freq, the highest core's), against which cpu_mhz reads.
+        "cpu_max_mhz": max((k / 1000 for r in runs for k in (r.get("cpu_max_khz") or {}).values()), default=None),
+        "cpu_clock_s": max((r["cpu_clock_s"] for r in runs if r.get("cpu_clock_s")), default=None),
         "bad_page_lines": sum(r.get("bad_page_lines") or 0 for r in all_runs),
         "lost_scroll_steps": sum(r.get("lost_scroll_steps") or 0 for r in all_runs),
+        # Graded views that didn't finish within the runner's deadline, as [run, view] (#202). Not a
+        # reason for "provisional": not finishing is the measurement, and its tasks fail.
+        "timed_out": [[i + 1, t] for i, r in enumerate(all_runs) for t in r.get("timed_out") or [] if t in G.TIERS],
         # The protocol of every page that reported; a page that was lost says nothing about it.
-        "protocols": sorted({x.get("protocol") for r in runs for x in r["tiers"].values() if not x.get("error")}, key=str),
+        "protocols": sorted({x.get("protocol") for r in runs for x in r["tiers"].values()
+                             if not x.get("error") and not (x.get("timed_out_s") and x.get("protocol") is None)}, key=str),
+        # And their Clarity version: [1] for v1; None for a page from before v1 (pre-release).
+        "clarity": sorted({x.get("clarity") for r in runs for x in r["tiers"].values()
+                           if not x.get("error") and not (x.get("timed_out_s") and x.get("protocol") is None)}, key=str),
         "warmups": [r.get("warmup") for r in runs],
         "tiers": tiers,
         "errors": [r["error"] for r in all_runs if r.get("error")],
@@ -676,7 +821,7 @@ def viewport_check(ref, device):
     return "ok", None
 
 
-LABEL = {"light": "light", "typical": "typical", "heavy": "large"}
+LABEL = {"light": "light", "typical-nocam": "typical", "typical": "typical (with a camera)", "heavy": "large"}
 
 
 def task_phrase(task, s_):
@@ -731,7 +876,9 @@ def headline(name, g, ref):
     lead = "Short of A+ on" if g["grade"] == G.LETTER_ORDER[1] else "Held back by"
     for t, phrases in hb:
         if phrases:
-            out += f" {lead} {LABEL[t]} dashboards: " + "; ".join(phrases) + "."
+            # "typical dashboards", "typical dashboards with a camera" (rubric v10, #205).
+            label = "typical dashboards with a camera" if t == "typical" else f"{LABEL.get(t, t)} dashboards"
+            out += f" {lead} {label}: " + "; ".join(phrases) + "."
     if g["capped_by_start"]:
         out += f" A slow restart ({g['start']['value'] / 1000:.1f} s) caps it at {G.START_CAP}."
     if g["provisional"]:
@@ -1071,10 +1218,16 @@ STREAM_LATE_MS = 200
 def fake_ha_log(path):
     """What fakeha.jsonl (run.sh --log) says about the fake Home Assistant: the commands the frontend
     sent, any it didn't know or that failed (the frontend then got an error HA wouldn't send), and how
-    late the fake itself sent the stream's changes. None without the file (runs before 2026-11-13)."""
+    late the fake itself sent the stream's changes. None without the file (runs before 2026-11-13).
+
+    Each change belongs to the view open when it was sent (the last `open` before it in the log): a
+    graded view's lateness is `stream_late_max_ms`, which the validity check reads; an ungraded
+    view's (the HLS copies, a warm-up) is `stream_late_detail_max_ms`, detail (#205, s1rtc8: one 2 s
+    burst on typical-hls made the graded result provisional)."""
     if not os.path.exists(path):
         return None
-    commands, unknown, failed, late = 0, {}, {}, []
+    commands, unknown, failed, late, detail = 0, {}, {}, [], []
+    view = None
     with open(path) as f:
         for line in f:
             try:
@@ -1087,10 +1240,15 @@ def fake_ha_log(path):
                 unknown[e["unknown"]] = unknown.get(e["unknown"], 0) + 1
             if "failed" in e:
                 failed[e["failed"]] = failed.get(e["failed"], 0) + 1
+            if "open" in e:
+                cmd = e["open"] or {}
+                view = "warmup" if str(cmd.get("warmup", "0")) not in ("0", "") else cmd.get("view")
             if "stream" in e:
-                late.append(e.get("late_ms") or 0)
-    return {"commands": commands, "unknown": unknown, "failed": failed, "stream_sent": len(late),
-            "stream_late_max_ms": max(late) if late else None}
+                # Before any view opened (nothing should stream then), it counts as graded.
+                (late if view is None or view in G.TIERS else detail).append(e.get("late_ms") or 0)
+    return {"commands": commands, "unknown": unknown, "failed": failed, "stream_sent": len(late) + len(detail),
+            "stream_late_max_ms": max(late) if late else None,
+            "stream_late_detail_max_ms": max(detail) if detail else None}
 
 
 def fake_ha_reasons(log, protocol4):
@@ -1131,6 +1289,10 @@ def coverage_reasons(ref, attempted):
         short = [f"{task} {n} of {attempted}" for task, n in got.items() if 0 < n < attempted]
         if short:
             out.append(f"{t}: measured in fewer runs than attempted ({', '.join(short)})")
+        na = sum(1 for c in (s_ or {}).get("camera_runs") or [] if c.get("stalls_reported") is False)
+        if na:
+            out.append(f"{t}: {na} camera run(s) whose stalls couldn't be measured (no freeze counts from the receiver, "
+                       "or no frames to measure gaps over): n/a, not measured")
         rtts = (s_ or {}).get("clock_rtt_ms") or []
         if any(r is None or r > CLOCK_RTT_MS for r in rtts):
             out.append(f"{t}: the live changes' send times rest on a clock tie looser than ±{CLOCK_RTT_MS // 2} ms in some run")
@@ -1174,7 +1336,8 @@ def build(run_dir, apks=(), budgets=None):
         reasons.append("the kiosk's own page never finished loading in a graded run (Home Assistant down?)")
     reasons += coverage_reasons(ref, attempted)
     fake_log = fake_ha_log(os.path.join(run_dir, "fakeha.jsonl"))
-    reasons += fake_ha_reasons(fake_log, bool(ref) and G.PROTOCOL_VERSION in (ref.get("protocols") or []))
+    # The fake's log exists since pre-release protocol 4, and in v1.
+    reasons += fake_ha_reasons(fake_log, is_v1(ref) or any(isinstance(p, int) and p >= 4 for p in (ref or {}).get("protocols") or []))
     if ref and ref.get("bad_page_lines"):
         reasons.append(f"{ref['bad_page_lines']} page line(s) didn't parse or never arrived whole (cut off in logcat?)")
     if ref and ref.get("lost_scroll_steps"):
@@ -1182,9 +1345,13 @@ def build(run_dir, apks=(), budgets=None):
         reasons.append(f"{ref['lost_scroll_steps']} swipe(s) answered with no scroll step back")
     # Only the graded runs' pages count; a run that failed has none (smoke7 printed "protocol " with
     # nothing after it). A page that didn't say reads as "unknown", as in grade.ts.
-    if ref and ref["protocols"] and ref["protocols"] != [G.PROTOCOL_VERSION]:
-        reasons.append(f"the pages ran protocol {', '.join(G.protocol_name(p) for p in ref['protocols'])}; "
-                       f"this rubric is for protocol {G.PROTOCOL_VERSION}")
+    if ref and ref["protocols"] and not is_v1(ref):
+        if None in (ref.get("clarity") or [None]):
+            # Before v1 (2026-11-14): never graded as v1, whatever its protocol's number.
+            reasons.append(f"{G.PRE_RELEASE} (protocol {', '.join(G.protocol_name(p) for p in ref['protocols'])}): re-measure")
+        else:
+            reasons.append(f"the pages ran protocol {', '.join(G.protocol_name(p) for p in ref['protocols'])}; "
+                           f"this rubric is for protocol {G.PROTOCOL_VERSION}")
     vp_state, vp_reason = viewport_check(ref, device) if ref else ("unknown", None)
     grade["viewport"] = {"state": vp_state, "reason": vp_reason}
     if vp_state == "refused":
@@ -1202,7 +1369,7 @@ def build(run_dir, apks=(), budgets=None):
         grade["provisional_reasons"] = reasons
     name = device.get("frame_name") or device["frame"]
     grade["headline"] = headline(name, grade, graded["reference"])
-    if grade["grade"] and ref and ref["protocols"] and ref["protocols"] != [G.PROTOCOL_VERSION]:
+    if grade["grade"] and ref and ref["protocols"] and not is_v1(ref):
         # The report still gives the letter (for the record); the site won't, for these pages.
         grade["headline"] += " Re-measure to publish: the site shows no letter for these pages."
 
@@ -1222,6 +1389,9 @@ def build(run_dir, apks=(), budgets=None):
     rep = {
         "schema": SCHEMA,
         "protocol_version": (ref["protocols"][0] if ref and len(ref["protocols"]) == 1 else None),
+        # Clarity's version (v1 from 2026-11-14); None for a report from before it, which the site
+        # shows as "re-measure".
+        "clarity": G.CLARITY if is_v1(ref) else None,
         "measured_on": device.get("measured_on"),
         "runs_attempted": attempted,
         "frame": {"id": device["frame"], "name": name,
@@ -1230,6 +1400,7 @@ def build(run_dir, apks=(), budgets=None):
         "apk": apk_sizes(apks),
         "ram": reference_ram(ref_idles, raw_refs, package, budgets, device.get("mem_total_kb")),
         "fake_ha": fake_log,
+        "webrtc_transport": webrtc_transport(run_dir, graded.get("reference")),
         "grade": grade,
         "graded": graded,
         "detail": detail,
@@ -1238,6 +1409,40 @@ def build(run_dir, apks=(), budgets=None):
     }
     rep["notes"] = N.notes(rep)
     return rep
+
+
+def webrtc_transport(run_dir, ref):
+    """How the graded cameras' WebRTC video reached the panel (protocol 7, #202): lanprobe.py's choice
+    in transport.json (transport: lan-udp, lan-turn or adb; chosen_by: auto or flag; reason). Over adb,
+    `limited` says heavy's camera result may be the test's USB link's, not the panel's (#202's smokes
+    4 and 5). None before protocol 7, or without the reference part."""
+    path = os.path.join(run_dir, "transport.json")
+    if not ref or not os.path.exists(path):
+        return None
+    with open(path) as f:
+        t = json.load(f)
+    out = {k: t.get(k) for k in ("transport", "chosen_by", "reason")}
+    heavy_cams = bool(((ref.get("tiers") or {}).get("heavy") or {}).get("camera_runs"))
+    out["limited"] = ("heavy's camera video went through the test's adb link (USB), which on the S1 couldn't carry "
+                      "four streams; heavy's camera result may be the link's, not the panel's"
+                      if t.get("transport") == "adb" and heavy_cams else None)
+    return out
+
+
+TRANSPORT_WORDS = {"lan-udp": "over the LAN (UDP), as in a real home", "lan-turn": "over the LAN (TCP, through the test's relay)",
+                   "adb": "through the test's adb link (USB)"}
+
+
+def transport_line(rep):
+    """report.md, beside the camera results: the path the video took, why, and over adb the caveat."""
+    t = rep.get("webrtc_transport")
+    if not t:
+        return []
+    line = (f"Camera video {TRANSPORT_WORDS.get(t['transport'], t['transport'])}: {t['reason']}"
+            + (" (chosen with --webrtc-transport)." if t.get("chosen_by") == "flag" and not t["reason"].startswith("set ") else "."))
+    if t.get("limited"):
+        line += f" **Possibly limited by the test:** {t['limited']}."
+    return [line]
 
 
 def read_thermal(path):
@@ -1311,7 +1516,74 @@ def camera_detail(ref):
                              f"{p95(sg.get('queued_ms'))}), longest gap between a stream's segments "
                              + ("n/a" if sg.get("arrival_gap_max_ms") is None else f"{sg['arrival_gap_max_ms']:.0f} ms"))
             out.append(f"{t} cameras, run {k} (detail): " + "; ".join(parts) + ".")
+    for t, s_ in ref["tiers"].items():
+        for k, c in enumerate(s_.get("camera_runs") or [], 1):
+            w = webrtc_detail(c)
+            if w:
+                out.append(f"{t} cameras over WebRTC, run {k} (detail): {w}.")
+        fb = s_.get("camera_fallback")
+        if fb:
+            cells = []
+            for k, (r, lv) in enumerate(zip(fb["runs"], fb["levels"]), 1):
+                if r.get("first_frame_ms") is None:
+                    cells.append(f"run {k}: no frame{' (' + r['error'] + ')' if r.get('error') else ''}")
+                else:
+                    cells.append(f"run {k}: first frame {fmt_n(r['first_frame_ms'], ' ms')}, {fmt_n(r['shown_pct'], ' %')} shown, "
+                                 f"stalls {fmt_n(r['stall_total_ms'], ' ms')}, {lv}")
+            out.append(f"{t} cameras over HLS, the fallback (detail, not graded; {fb['level'] or 'n/a'} by the camera bars): "
+                       + "; ".join(cells) + ".")
     return out
+
+
+def webrtc_detail(c):
+    """A run's WebRTC streams in a few words (#202): the decoder the browser reports, frames dropped
+    and frozen by its own counts, and the candidate pair. Empty for HLS."""
+    ws = [s["webrtc"] for s in c.get("detail") or [] if (s.get("webrtc") or {}).get("inbound")]
+    if not ws:
+        return ""
+    decs = sorted({w.get("decoder") or "not reported" for w in ws})
+    hw = sorted({"hardware" if w.get("power_efficient") else "software" for w in ws if w.get("power_efficient") is not None})
+    cand = sorted({f"{(w.get('candidate') or {}).get('local')}/{(w.get('candidate') or {}).get('relay')}" for w in ws
+                   if w.get("candidate")})
+
+    def total(k, fmt="{:.0f}"):
+        """The streams' sum; n/a when no stream reported it, and marked when only some did."""
+        got = [w[k] for w in ws if w.get(k) is not None]
+        if not got:
+            return "n/a"
+        return fmt.format(sum(got)) + ("" if len(got) == len(ws) else f" (from {len(got)} of {len(ws)} streams)")
+    # More than one session for a camera: HA's player made another (after ICE failed, #202's S1 heavy).
+    again = [w for w in ws if (w.get("sessions") or 0) > 1 or any((cn.get("offers") or 0) > 1 for cn in w.get("connections") or [])]
+    restarts = (f", {len(again)} of {len(ws)} streams needed another WebRTC session"
+                f" (no video for {sum(w.get('no_video_ms') or 0 for w in again) / 1000:.1f} s in all)") if again else ""
+    # The frame callbacks' gaps beside the graded ones (protocol 8): how busy the page was, not the video.
+    cbs = [s["callback_gaps"] for s in c.get("detail") or [] if s.get("callback_gaps")]
+    busy = (f"; the page's frame callbacks (detail, how busy the page was): {sum(x.get('callbacks') or 0 for x in cbs)} "
+            f"for {total('frames_decoded')} frames, stalls by them up to {max((x.get('stall_total_ms') or 0) for x in cbs) / 1000:.1f} s"
+            if cbs else "")
+    return (f"decoder {', '.join(decs)}" + (f" ({', '.join(hw)})" if hw else "")
+            + f", {total('frames_decoded')} frames decoded, {total('frames_dropped')} dropped, "
+            f"{total('freezes')} freezes ({total('freeze_s', '{:.1f}')} s), candidate {', '.join(cand) or 'n/a'}{restarts}{busy}")
+
+
+def by_cpu(khz):
+    """A sample's kHz by CPU number ({"0": khz, ...}, the runner's); an early list counts from cpu0."""
+    if isinstance(khz, dict):
+        return {str(k): v for k, v in khz.items()}
+    return {str(i): v for i, v in enumerate(khz or [])}
+
+
+def cpu_clock_line(ref, clocks, top, every):
+    """report.md (detail, #244): each view's clock, its cores pooled, or each core's when they differ
+    (a big.LITTLE CPU's clusters)."""
+    def one(t, c):
+        cores = {i: x["median"] for i, x in (ref["tiers"][t].get("cpu_mhz_by_core") or {}).items() if x}
+        if len(set(cores.values())) > 1:
+            return f"{t} " + ", ".join(f"cpu{i} {m:.0f}" for i, m in cores.items()) + " MHz (medians)"
+        return f"{t} {c['median']:.0f} MHz ({c['min']:.0f} to {c['max']:.0f})"
+    when = f"every {every:g} s" if every else "while open"
+    return (f"CPU clock while each view was open (detail, every core, {when}): " + "; ".join(one(t, c) for t, c in clocks)
+            + (f"; the CPU's top clock is {top:.0f} MHz." if top else "."))
 
 
 def camera_cell(s_, b):
@@ -1324,11 +1596,14 @@ def camera_cell(s_, b):
         return "not measured"
     med = lambda k: P.spread([r.get(k) for r in runs])  # noqa: E731
     ff = med("first_frame_ms")
+    late = sum(1 for r in runs if r.get("timed_out"))
+    late_note = f"the view didn't finish in {late} of {len(runs)} run(s)" if late else ""
     if ff is None:
-        return f"a stream showed no frame, {b.get('camera') or 'n/a'}"
+        return f"{late_note or 'a stream showed no frame'}, {b.get('camera') or 'n/a'}"
     # The numbers are the runs whose streams all played; say how many didn't (they make the level).
-    failed = sum(1 for r in runs if r.get("first_frame_ms") is None)
-    note = f", {failed} of {len(runs)} run(s) had a stream that showed no frame" if failed else ""
+    failed = sum(1 for r in runs if r.get("first_frame_ms") is None and not r.get("timed_out"))
+    note = (f", {failed} of {len(runs)} run(s) had a stream that showed no frame" if failed else "") \
+        + (f", {late_note}" if late else "")
     return (f"first frame {fmt(ff, ' ms')}, {fmt(med('shown_pct'), ' %')} shown, stalls {fmt(med('stall_total_ms'), ' ms')}, "
             f"{b.get('camera') or 'n/a'}{note}")
 
@@ -1348,7 +1623,8 @@ def markdown(rep):
     app = rep["frame"]["app"]
     out = [f"# {G.NAME} report: {rep['frame']['name']}", "", device_line(dev, app), "",
            f"**{g['headline']}**", "", notes_md(rep.get("notes") or N.notes(rep)), "",
-           "The grade comes only from the three reference dashboards this test ships (light, typical, heavy), "
+           "The grade comes only from the reference dashboards this test ships (light, typical without and with a "
+           "camera, heavy), "
            "so it doesn't depend on your Home Assistant. Background load (panes, the radio, heat) still reaches it.", ""]
     ref = rep["graded"]["reference"]
     if ref:
@@ -1360,11 +1636,11 @@ def markdown(rep):
                 "| Page | Level | Tap (INP) | Scroll | Live updates | Open the view | Cameras | Holds it back |",
                 "|---|---|---|---|---|---|---|---|"]
         for t in G.TIERS:
-            s_, b = ref["tiers"].get(t), g["bands"][t]
+            s_, b = ref["tiers"].get(t), g["bands"].get(t) or {}
             if not s_:
                 out.append(f"| {t} | not measured | | | | | | |")
                 continue
-            lvl = g["levels"][t]
+            lvl = g["levels"].get(t)
             up = {None: "fluid", "fluid": "good", "good": "premium"}
             target = up.get(lvl)
             held = ", ".join(G.limits(b, target)) if target else ""
@@ -1385,6 +1661,30 @@ def markdown(rep):
                 + (f" ({vp['reason']})" if vp.get("reason") else "") + "."]
         if ref["start_errors"]:
             out.append(f"Restart not measured in {len(ref['start_errors'])} run(s) ({'; '.join(sorted(set(ref['start_errors'])))}).")
+        clocks = [(t, s_["cpu_mhz"]) for t, s_ in ref["tiers"].items() if (s_.get("cpu_mhz") or {}).get("median") is not None]
+        if clocks:
+            top = ref.get("cpu_max_mhz")
+            every = ref.get("cpu_clock_s")
+            out.append(cpu_clock_line(ref, clocks, top, every))
+        slow_free = [(t, s_) for t, s_ in ref["tiers"].items()
+                     if (s_.get("drawn_ms") or {}).get("median") is not None and (s_.get("load_ms") or {}).get("median") is not None
+                     and s_["load_ms"]["median"] - s_["drawn_ms"]["median"] > 5000]
+        if slow_free:
+            out.append("Drawn long before usable (detail): " + "; ".join(
+                f"{t}'s first screen was drawn {s_['drawn_ms']['median'] / 1000:.1f} s after the navigation, and its main "
+                f"thread was free (usable) after {s_['load_ms']['median'] / 1000:.1f} s" for t, s_ in slow_free)
+                + ". Each run's `busy_ms` in report.json says how long the probes waited each second.")
+        if ref.get("timed_out"):
+            out.append(f"Views that timed out (not usable within {int(VIEW_DEADLINE_S)} s, or stuck in a task, saying nothing "
+                       f"for {int(STAGE_IDLE_S)} s), measured as failing what they didn't get to (not \"not measured\"): "
+                       + "; ".join(f"{t} in run {k} ({', '.join((ref['tiers'].get(t) or {}).get('timed_out_tasks') or []) or 'nothing left'})"
+                                   for k, t in ref["timed_out"]) + ".")
+        detail_late = (rep.get("fake_ha") or {}).get("stream_late_detail_max_ms")
+        if (detail_late or 0) > STREAM_LATE_MS:
+            # Not a reason for "provisional": no graded view's stream was late (#205).
+            out.append(f"The fake Home Assistant sent a live change {detail_late:.0f} ms late during a view that isn't "
+                       "graded (an HLS copy or a warm-up; detail: this computer was busy then).")
+        out += transport_line(rep)
         out += camera_detail(ref)
         for t, s_ in ref["tiers"].items():
             for what in ("scroll", "updates", "load"):

@@ -7,10 +7,13 @@ It is deterministic: the same build, the same states and the same update stream 
 answers the commands the pinned frontend sends (recorded in test/fakeha-traffic.json), and logs any
 other one so a newer frontend can't pass unnoticed.
 
-Only for the perf test: it listens on 127.0.0.1 (the panel reaches it through `adb reverse`), and its
-sign-in accepts anyone, because there is nothing behind it.
+Its cameras play over WebRTC (webrtc.py: an aiortc peer behind a TURN relay on --port + 1) when
+aiortc is here (run.sh runs it from webrtcenv.py's venv), and over HLS.
 
-  tools/perf/fakeha.py --port 8089 [--log traffic.jsonl]
+Only for the perf test: it listens on 127.0.0.1 (the panel reaches both ports through `adb reverse`),
+and its sign-in accepts anyone, because there is nothing behind it.
+
+  tools/perf/fakeha.py --port 8089 [--log traffic.jsonl] [--turn-port 8090]
 """
 import argparse
 import base64
@@ -32,6 +35,7 @@ import camera  # noqa: E402
 import dashboards as D  # noqa: E402
 CLARITY = D
 import hafrontend  # noqa: E402
+import webrtc  # noqa: E402
 
 HA_VERSION = "2026.11.0"
 WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
@@ -106,6 +110,38 @@ class Hub:
         # stream stops (/clarity/still): a page asks for one other than the last it ran, so a request
         # left behind by a page that died (a force-stopped frontend's long poll) can't use it up.
         self.cmd, self.cmd_cv = None, threading.Condition()
+        # The WebRTC peer and its TURN relay (webrtc.py), when aiortc is here (serve() starts it).
+        self.webrtc, self.turn_port, self.webrtc_n = None, None, 0
+        # The frontend websockets' traffic each second (#202, smoke 5): bytes and messages each way,
+        # and the longest a send to the panel blocked (its TCP path through adb backing up).
+        self.ws_lock, self.ws_io = threading.Lock(), None
+
+    def ws_note(self, down=0, up=0, send_ms=0.0):
+        with self.ws_lock:
+            io = self.ws_io = self.ws_io or {"down_kb": 0.0, "down_msgs": 0, "up_kb": 0.0, "up_msgs": 0, "send_ms_max": 0.0}
+            if down:
+                io["down_kb"] += down / 1024
+                io["down_msgs"] += 1
+                io["send_ms_max"] = max(io["send_ms_max"], send_ms)
+            if up:
+                io["up_kb"] += up / 1024
+                io["up_msgs"] += 1
+
+    def ws_seconds(self):
+        """Logs the websockets' traffic once a second, while there is any."""
+        while True:
+            time.sleep(1)
+            with self.ws_lock:
+                io, self.ws_io = self.ws_io, None
+            if io:
+                self.record(dict({"t": time.time(), "ws_second": True},
+                                 **{k: round(v, 1) if isinstance(v, float) else v for k, v in io.items()}))
+
+    def new_webrtc_session(self):
+        """A WebRTC session id, as HA's ULIDs look, but counted."""
+        with self.lock:
+            self.webrtc_n += 1
+            return f"01JC1ARITYW{self.webrtc_n:015d}"
 
     def new_stream(self, cam):
         """A new HLS stream for a camera: its token, and when its segment 0 began (monotonic)."""
@@ -213,11 +249,14 @@ class Conn:
     def __init__(self, hub, sock):
         self.hub, self.sock, self.send_lock = hub, sock, threading.Lock()
         self.entity_subs = []
+        self.webrtc = {}            # camera/webrtc/offer subscription id -> its session
 
     def send(self, msg):
         data = ws_frame(json.dumps(msg, separators=(",", ":")).encode())
         with self.send_lock:
+            t0 = time.monotonic()
             self.sock.sendall(data)
+            self.hub.ws_note(down=len(data), send_ms=(time.monotonic() - t0) * 1000)
 
     def result(self, mid, result=None, success=True, error=None):
         msg = {"id": mid, "type": "result", "success": success}
@@ -245,6 +284,7 @@ class Conn:
         try:
             while True:
                 op, data = ws_read(self.sock)
+                self.hub.ws_note(up=len(data))
                 if op == 8:
                     return
                 if op == 9:
@@ -258,6 +298,8 @@ class Conn:
                     self.handle(m)
         finally:
             self.hub.conns.discard(self)
+            for sid in self.webrtc.values():
+                self.hub.webrtc and self.hub.webrtc.close(sid)
 
     def handle(self, m):
         mid, t = m.get("id"), m.get("type")
@@ -291,6 +333,9 @@ def _unsub(c, m):
     sub = m.get("subscription")
     if sub in c.entity_subs:
         c.entity_subs.remove(sub)
+    sid = c.webrtc.pop(sub, None)
+    if sid and c.hub.webrtc:
+        c.hub.webrtc.close(sid)             # HA closes the camera's WebRTC session with its subscription
     c.result(m["id"])
 
 
@@ -314,13 +359,82 @@ def _history_stream(c, m):
 
 def _camera_stream(c, m):
     """camera/stream: a fresh HLS stream for the camera (homeassistant/components/camera, the stream
-    integration's URL shape). Each request is its own stream, started as if it had been running
-    preRollS already (a camera that has been on), so a view's first frame doesn't wait on segments."""
+    integration's URL shape). Each request is its own stream, started then, as HA starts a stream that
+    isn't preloaded (its default); the master playlist waits for two segments (tiers.json CAMERA)."""
     cam = m.get("entity_id")
     if cam not in D.CAMERA_PROFILES:
         return c.result(m["id"], None, success=False, error={"code": "not_found", "message": "Camera not found"})
     token = c.hub.new_stream(cam)
     c.result(m["id"], {"url": f"/api/hls/{token}/master_playlist.m3u8"})
+
+
+def _stream_types(cam):
+    """What camera/capabilities offers: Clarity's per camera (dashboards.py CAMERA_STREAM_TYPES); a
+    home without that list (the showcase) offers HLS, as before #202."""
+    types = getattr(D, "CAMERA_STREAM_TYPES", None)
+    return ["hls"] if types is None else types.get(cam)
+
+
+def _camera_capabilities(c, m):
+    types = _stream_types(m.get("entity_id"))
+    if types is None:
+        return c.result(m["id"], None, success=False, error={"code": "not_found", "message": "Camera not found"})
+    c.result(m["id"], {"frontend_stream_types": types, "two_way_audio": False})
+
+
+def _webrtc(error_code):
+    """HA's require_webrtc_support (homeassistant/components/camera/webrtc.py): a camera that doesn't
+    offer web_rtc gets error_code."""
+    def wrap(f):
+        def handler(c, m):
+            types = _stream_types(m.get("entity_id"))
+            if types is None:
+                return c.result(m["id"], None, success=False, error={"code": "not_found", "message": "Camera not found"})
+            if "web_rtc" not in types:
+                return c.result(m["id"], None, success=False, error={
+                    "code": error_code, "message": f"Camera does not support WebRTC, frontend_stream_types={set(types)}"})
+            f(c, m)
+        return handler
+    return wrap
+
+
+@_webrtc("webrtc_get_client_config_failed")
+def _webrtc_client_config(c, m):
+    w = c.hub.webrtc
+    c.result(m["id"], webrtc.client_config(c.hub.turn_port, w.transport if w else "adb", w.addr if w else None))
+
+
+@_webrtc("webrtc_offer_failed")
+def _webrtc_offer(c, m):
+    """camera/webrtc/offer, as HA answers it with go2rtc: a subscription whose result comes first,
+    then the session's id, then the answer (or an error) from the peer."""
+    mid, cam = m["id"], m["entity_id"]
+    c.result(mid)
+    sid = c.hub.new_webrtc_session()
+    c.webrtc[mid] = sid
+    c.event(mid, {"type": "session", "session_id": sid})
+    # How many candidates the browser put in its offer (it trickles the rest: camera/webrtc/candidate).
+    c.hub.record({"t": time.time(), "webrtc_offer": cam, "session": sid,
+                  "offer_candidates": sum(line.startswith("a=candidate:") for line in m["offer"].splitlines())})
+
+    def send(ev):
+        if c.webrtc.get(mid) == sid:        # not after the frontend has unsubscribed
+            try:
+                c.event(mid, ev)
+            except OSError:
+                pass
+    if c.hub.webrtc is None:
+        c.hub.record({"t": time.time(), "webrtc_error": cam, "session": sid, "error": "no aiortc"})
+        return send({"type": "error", "code": "webrtc_offer_failed",
+                     "message": "the fake's WebRTC peer needs aiortc (tools/perf/webrtc-requirements.txt)"})
+    c.hub.webrtc.offer(sid, cam, D.CAMERA_PROFILES[cam], m["offer"], send)
+
+
+@_webrtc("webrtc_candidate_failed")
+def _webrtc_candidate(c, m):
+    if c.hub.webrtc and m.get("session_id") in c.webrtc.values():
+        c.hub.webrtc.candidate(m["session_id"], m.get("candidate"))
+    c.result(m["id"])
 
 
 def _const(value):
@@ -361,10 +475,14 @@ HANDLERS = {
     "recorder/statistics_during_period": lambda c, m: c.result(m["id"], D.statistics(
         m.get("statistic_ids"), m.get("start_time"), m.get("end_time"), m.get("period"))),
     "ping": lambda c, m: c.send({"id": m["id"], "type": "pong"}),
-    # Cameras (src/data/camera.ts at the pinned tag): HLS only, as HA's stream integration offers.
-    "camera/capabilities": _const({"frontend_stream_types": ["hls"], "two_way_audio": False}),
+    # Cameras (src/data/camera.ts at the pinned tag): WebRTC and HLS for go2rtc's, HLS for the rest.
+    "camera/capabilities": _camera_capabilities,
+    "camera/webrtc/get_client_config": _webrtc_client_config,
+    "camera/webrtc/offer": _webrtc_offer,
+    "camera/webrtc/candidate": _webrtc_candidate,
     "camera/stream": _camera_stream,
-    "camera/get_prefs": _const({"preload_stream": True, "orientation": 1}),
+    # HA's default (camera/prefs.py): no preload, so a stream starts when the frontend asks for it.
+    "camera/get_prefs": _const({"preload_stream": False, "orientation": 1}),
     "auth/sign_path": lambda c, m: c.result(m["id"], {"path": f"{m.get('path', '')}{'&' if '?' in m.get('path', '') else '?'}authSig=clarity"}),
     # Read from the frontend's source at the pinned tag (src/data/*.ts): what each one answers.
     "repairs/list_issues": _const({"issues": []}),
@@ -429,6 +547,12 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_bytes(200, json.dumps(D.MANIFEST).encode(), "application/manifest+json")
         if path in ("/clarity/live", "/clarity/still"):
             # The harness asks for the live updates while it measures them, and stops them when done.
+            # A view's stop that comes after the next view opened (a busy page holds it: protocol 8
+            # doesn't wait for it; the runner sends one too) mustn't stop or cancel that one.
+            nonce = urllib.parse.parse_qs(url.query).get("nonce", [""])[0]
+            cur = Handler.hub.cmd
+            if path.endswith("still") and nonce and cur is not None and cur.get("nonce") != nonce:
+                return self.send_bytes(200, json.dumps({"stale": True}).encode(), "application/json")
             out = Handler.hub.stream(path.endswith("live"))
             if path.endswith("still"):
                 Handler.hub.done_view()
@@ -508,6 +632,9 @@ class Handler(BaseHTTPRequestHandler):
         loop = camera.segments(st["profile"])
         name = m.group(2)
         if name == "master_playlist.m3u8":
+            # As HA's HlsMasterPlaylistView: only once the stream has made two segments (it waits).
+            due = st["t0"] + cfg.get("masterAfterSegments", 0) * cfg["segmentS"]
+            time.sleep(max(0.0, min(10.0, due - time.monotonic())))
             w, h = prof["size"].split("x")
             body = (f"#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH={int(prof['bitrate'][:-1]) * 1000},CODECS=\"avc1.4d401f\","
                     f"RESOLUTION={w}x{h},FRAME-RATE={cfg['fps']}\nplaylist.m3u8\n")
@@ -603,15 +730,23 @@ def harness_url():
     return f"/clarity/harness-{hashlib.sha256(D.asset('harness.js')[1]).hexdigest()[:16]}.js"
 
 
-def serve(port, log_path=None, harness=True, home=None):
-    """`home`: a module like dashboards.py to serve instead of Clarity's (tools/showcase/home.py)."""
+def serve(port, log_path=None, harness=True, turn_port=None, transport="adb", home=None):
+    """turn_port: where the WebRTC relay listens (0: any free port; None: port + 1). The panel reaches
+    it through adb reverse, as it reaches `port`. `home`: a module like dashboards.py to serve instead
+    of Clarity's (tools/showcase/home.py); the WebRTC peer serves Clarity's cameras only."""
     global D
     D = home or CLARITY
     front = hafrontend.root()
     Handler.front = os.path.realpath(front)
     Handler.harness = harness_url()
     Handler.index = render_index(front, Handler.harness if harness else None)
-    Handler.hub = Hub(open(log_path, "a") if log_path else None)
+    Handler.hub = hub = Hub(open(log_path, "a") if log_path else None)
+    threading.Thread(target=hub.ws_seconds, daemon=True).start()
+    if webrtc.available() and D is CLARITY:
+        hub.webrtc = webrtc.WebRTC((port + 1 if port else 0) if turn_port is None else turn_port, camera.annexb,
+                                   camera.FPS, record=hub.record, transport=transport)
+        hub.turn_port = hub.webrtc.turn_port
+        hub.record({"t": time.time(), "webrtc_transport": transport, "media": hub.webrtc.addr})
     # The frontend fetches dozens of modules at once; the default backlog (5) resets connections.
     ThreadingHTTPServer.request_queue_size = 256
     srv = ThreadingHTTPServer(("127.0.0.1", port), Handler)
@@ -624,9 +759,16 @@ def main():
     ap.add_argument("--port", type=int, default=8089)
     ap.add_argument("--log", help="append every websocket command to this file (JSON lines)")
     ap.add_argument("--no-harness", action="store_true", help="serve HA's index.html without Clarity's harness")
+    ap.add_argument("--turn-port", type=int, help="the WebRTC relay's port (default: --port + 1)")
+    ap.add_argument("--webrtc-transport", default="adb", choices=webrtc.TRANSPORTS,
+                    help="adb (the test's); lan-turn and lan-udp are diagnostics for a panel on this network")
     a = ap.parse_args()
-    srv = serve(a.port, a.log, not a.no_harness)
-    print(f"fake Home Assistant {HA_VERSION}, frontend {hafrontend.VERSION}, on http://127.0.0.1:{a.port}", flush=True)
+    srv = serve(a.port, a.log, not a.no_harness, a.turn_port, a.webrtc_transport)
+    w = Handler.hub.webrtc
+    turn = (f"WebRTC over {w.transport}, relay on {w.addr if w.transport == 'lan-turn' else '127.0.0.1'}:{Handler.hub.turn_port}, "
+            f"media on {w.addr}" if w
+            else "no WebRTC (aiortc isn't here: tools/perf/webrtc-requirements.txt)")
+    print(f"fake Home Assistant {HA_VERSION}, frontend {hafrontend.VERSION}, on http://127.0.0.1:{a.port}; {turn}", flush=True)
     srv.serve_forever()
 
 

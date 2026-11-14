@@ -1,11 +1,18 @@
 {
  "_comment": "Clarity reference dashboards (MIT): the counts, the first screen, the update stream and the phases. The one source for the fake Home Assistant (dashboards.py), the in-page harness and the node tests. Project choices, fixed before any frame was graded under them; change one only on purpose, with the docs and the tests, never to move a frame's letter.",
- "PROTOCOL": 5,
+ "_CLARITY": "Clarity's version (the maintainer, 2026-11-14): v1, measured with protocol 1 and graded with rubric 1. Every page line carries it (refdash `clarity`), so a line from before the reset (pre-release protocols 1 to 8) can't pass for v1.",
+ "CLARITY": 1,
+ "PROTOCOL": 1,
  "ORDER": [
   "light",
+  "typical-nocam",
   "typical",
   "heavy"
  ],
+ "_PLAIN": "Views without their cameras (the maintainer, 2026-11-13, #205): a copy of a view whose camera cards are still pictures in the same places (the cameras took picture cards' places in pre-release protocol 5), so the view's cards and layout are the same and only the live video is gone. typical-nocam grades C (typical without a camera); typical, with its camera, grades B. Graded like any view.",
+ "PLAIN": {
+  "typical-nocam": "typical"
+ },
  "DASHBOARD": "clarity-ref",
  "_START": "The view the kiosk is pointed at and comes back to after a restart: the light view's cards plus one history graph and one picture, so the cold load brings in the code of every card type HA loads lazily (create-card-element.ts) and opening a view later measures the view, not a first download.",
  "START": {
@@ -13,7 +20,7 @@
   "histories": 1,
   "pictures": 1
  },
- "_CAMERAS": "Live camera cards (#174), right after the head: HA's picture-entity card with camera_view live, played by the frontend's HLS player. Light has none; typical one 720p; heavy one 720p and a grid of three 360p (a main stream and sub-streams). They take the place of picture cards, so the card counts stay. The start view has one 360p camera, so the cold load brings in the camera player's code, as it does every other lazy card type.",
+ "_CAMERAS": "Live camera cards (#174), right after the head: HA's picture-entity card with camera_view live. Light has none; typical one 720p; heavy one 720p and a grid of three 360p (a main stream and sub-streams). They take the place of picture cards, so the card counts stay. The start view has one 360p camera, so the cold load brings in the camera player's code, as it does every other lazy card type. Pre-release protocol 6 (#202): these cameras are HA's with go2rtc, as real setups are: camera/capabilities offers web_rtc and hls, the frontend plays WebRTC, and the camera task grades that stream (CAMERA path).",
  "CAMERAS": {
   "start": [
    "360p"
@@ -22,6 +29,7 @@
   "typical": [
    "720p"
   ],
+  "typical-nocam": [],
   "heavy": [
    "720p",
    [
@@ -31,11 +39,19 @@
    ]
   ]
  },
+ "_FALLBACK": "HLS, measured as a fallback (#202; detail, not graded): after each run's graded views, a copy of each view with cameras, whose cameras offer HLS only (HA's stream integration without go2rtc), so HA's frontend plays them with hls.js. Opened as the graded views are, without the swipes.",
+ "FALLBACK": {
+  "typical-hls": "typical",
+  "heavy-hls": "heavy"
+ },
+ "_CAMERA": "The streams' timing. Pre-release protocol 7 (#202, smoke 7) follows HA 2026.11.0's defaults: a camera doesn't preload its stream (camera/prefs.py preload_stream False), so HLS starts when the frontend asks (no pre-roll), and the master playlist answers once two segments are made (stream/hls.py HlsMasterPlaylistView). Before, the fake served 4 s of segments at once, so HA's HLS players started before WebRTC and took the panel's hardware decoders.",
  "CAMERA": {
   "fps": 15,
   "segmentS": 1,
   "windowSegments": 4,
-  "preRollS": 4
+  "preRollS": 0,
+  "masterAfterSegments": 2,
+  "path": "web_rtc", "windowMs": 30000
  },
  "TIERS": {
   "light": {
@@ -88,6 +104,9 @@
   "freeWindowMs": 500,
   "warmupMs": 1000,
   "tapWaitMinMs": 30000,
+  "tapEachMs": 5000,
+  "endStreamWaitMs": 5000,
+  "statsWaitMs": 10000,
   "swipes": 6,
   "swipeMs": 300,
   "scrollQuietMs": 400,

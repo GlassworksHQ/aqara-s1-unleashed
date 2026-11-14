@@ -1,0 +1,10 @@
+{
+  "id": "bluetooth-proxy",
+  "name": "Bluetooth proxy",
+  "does": "Relays nearby BLE sensors to Home Assistant, listening only.",
+  "requires": [
+    "bluetooth-le"
+  ],
+  "status": "alpha",
+  "docs": "docs/esphome.md#bluetooth-proxy"
+}

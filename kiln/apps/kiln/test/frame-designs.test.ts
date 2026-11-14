@@ -4,7 +4,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { ABIS, PANE_IDS, RATING_KEYS, geometry, type FrameDesign } from '@glassworks/frame-card';
+import { ABIS, PANE_IDS, RATING_KEYS, framePanes, geometry, isCapability, isPaneAlias, type FrameDesign } from '@glassworks/frame-card';
 import { FRAMES, RENDERS } from '../src/frames/catalog';
 
 const frames = fileURLToPath(new URL('../../../../frames', import.meta.url));
@@ -50,7 +50,13 @@ describe('frame designs', () => {
       expect(f.tagline.length, 'tagline: at most 50 characters (glassworks.dev\'s pnpm brand checks the drawn width)').toBeLessThanOrEqual(50);
     }
     expect(Object.keys(f.ratings).sort()).toEqual([...RATING_KEYS].sort());
-    expect(Object.keys(f.panes).sort()).toEqual([...PANE_IDS].sort());
+    // it rates only panes that exist (by id or an old alias); every other pane is worked out, with a reason (#231)
+    expect(Object.keys(f.panes).filter((k) => !PANE_IDS.includes(k) && !isPaneAlias(k)), 'panes rated that the app has no pane for').toEqual([]);
+    expect((f.provides ?? []).filter((c) => !isCapability(c)), 'provides: unknown capability words').toEqual([]);
+    for (const p of framePanes(f)) {
+      expect(p.support, p.pane.id).toBeTruthy();
+      if (p.derived) expect(p.reason, `${p.pane.id}: a derived rating says why`).toMatch(/\S/);
+    }
     expect(f.abis?.length, 'abis').toBeGreaterThan(0);
     expect(f.abis?.filter((a) => !(ABIS as readonly string[]).includes(a)), 'abis Android doesn\'t name').toEqual([]);
     expect(new Set(f.abis).size, 'abis listed twice').toBe(f.abis?.length);

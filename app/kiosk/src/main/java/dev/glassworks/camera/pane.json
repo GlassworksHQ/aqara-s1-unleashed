@@ -1,0 +1,10 @@
+{
+  "id": "camera",
+  "name": "Camera",
+  "does": "Wakes the screen on motion that isn't a light change; snapshots and an ONVIF stream if you allow them.",
+  "requires": [
+    "camera"
+  ],
+  "status": "alpha",
+  "docs": "docs/esphome.md#camera-entities"
+}

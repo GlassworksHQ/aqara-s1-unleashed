@@ -6,7 +6,7 @@
   "status": "planned",
   "summary": "A full-length mirror with a 40-inch portrait screen behind it. The original version takes a new Android image over fastboot.",
   "tagline": "A 40-inch mirror with Android behind it.",
-  "notice": "Not installable yet: today's app needs Android 8.0, and the Mirror runs 6.0.1. Installing will erase lululemon's software, with no backup. A later revision uses an NXP i.MX8 board, where only hardware-assisted (JTAG) access has been reported; it is not a target.",
+  "notice": "Not installable yet: today's app needs Android 8.0, and the Mirror runs 6.0.1. Installing will erase lululemon's software, with no backup. Later revisions use an NXP i.MX8 board, where only hardware-assisted (JTAG) access has been reported; they are not a target.",
   "model": {
     "body": {
       "shape": "rect",
@@ -266,6 +266,7 @@
       "value": "Leans on the wall on its stand, or mounts flat on the wall"
     }
   ],
+  "provides": ["microphone", "speaker", "bluetooth-le"],
   "panes": {
     "assist": {
       "support": "planned",
@@ -283,11 +284,7 @@
       "support": "no",
       "note": "No Zigbee or Thread radio."
     },
-    "sensors": {
-      "support": "unknown",
-      "note": "Presence would come from the camera."
-    },
-    "base": {
+    "wall-base": {
       "support": "no",
       "note": "S1 only."
     }
