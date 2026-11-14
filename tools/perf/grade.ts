@@ -3,7 +3,7 @@
  *
  * The letter is derived, so it is computed where it is shown: the marketing site (and later the
  * shared frame package, #114) imports this module with a frame's summary (tools/perf/summary.py,
- * glassworks.perf-summary/2) and tools/perf/page/rubric.json. tools/perf/grade.py computes the same
+ * glassworks.perf-summary/3) and tools/perf/page/rubric.json. tools/perf/grade.py computes the same
  * letter from the same two files; test/grade-cases.json and test/test_grade.py's parity test keep
  * them equal. rubric.json is the single source of the thresholds and the letter rules: don't copy a
  * rule into this file.

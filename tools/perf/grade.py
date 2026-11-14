@@ -248,7 +248,7 @@ def protocol_name(v):
 
 
 def grade_summary(summary):
-    """The letter from a summary (glassworks.perf-summary/2), as the site computes it with grade.ts.
+    """The letter from a summary (glassworks.perf-summary/3), as the site computes it with grade.ts.
     status: graded, re-measure (pre-release, or another protocol: these rules don't apply) or not-comparable (the
     measurement says why, e.g. not at the default zoom)."""
     # Not comparable first: it says why there is nothing to grade, whatever the protocol.

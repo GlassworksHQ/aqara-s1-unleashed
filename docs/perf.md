@@ -36,7 +36,7 @@ format, not a measured result). The second sentence names the tasks that keep th
 next letter up. A table under it shows each page's tasks.
 
 The letter is derived, so it isn't stored anywhere it is shown: a frame's
-[summary](#the-summary-glassworksperf-summary2) holds the measurements, and the site computes the
+[summary](#the-summary-glassworksperf-summary3) holds the measurements, and the site computes the
 letter at render time from the summary and `rubric.json` (see [Showing the grade](#showing-the-grade)).
 
 The grade is measured on three fixed **reference dashboards** that this test ships: light, typical
@@ -1487,7 +1487,7 @@ spread of the `all-on` samples, the report says "within noise". On the S1:
 | Key | What |
 |---|---|
 | `schema` | `"glassworks.perf/4"`. A field that changes meaning gets a new version (`/4`, 2026-11-12: `grade.bands` carries scroll and live-update levels, rubric v5) |
-| `clarity` | Clarity's version: `2` now (`1` for v1); `null` for a report from before v1 (pre-release), which the site shows as "re-measure". See [Versions](#versions) |
+| `clarity` | The Clarity version the pages ran, as they recorded it: `2` now, `1` for a v1 run (rebuilt by v2's code it stays `1`, and is re-measured); `null` for a report from before v1 (pre-release) or of mixed versions, which the site shows as "re-measure". See [Versions](#versions) |
 | `protocol_version` | The measurement protocol the pages ran (`null` if the runs disagree). See [Protocol and rubric versions](#protocol-and-rubric-versions) |
 | `measured_on` | The run's date (UTC, from the computer that ran it) |
 | `runs_attempted` | Graded runs attempted (`plan.json`), the count each band is over |
@@ -1508,7 +1508,7 @@ opened: `reference` (protocol 4: it came back to the reference dashboard and sai
 `finished-still` (stopped, then quiet), `finished-moving` (stopped, still painting, such as
 a clock card; normal) or `never-finished` (still loading 30 s after engine ready; the grade is provisional).
 
-## The summary (`glassworks.perf-summary/2`)
+## The summary (`glassworks.perf-summary/3`)
 
 `tools/perf/summary.py` writes a small, stable, frame-level summary of a finished report, for places
 that show a frame's grade (glassworks.dev, later a frame's `design/frame.json`). It holds
@@ -1519,7 +1519,7 @@ from real use, and nothing device-unique.
 
 | Key | What |
 |---|---|
-| `schema` | `"glassworks.perf-summary/2"` |
+| `schema` | `"glassworks.perf-summary/3"` |
 | `test` | The test's name, `"Clarity"` (`rubric.json` `name`), so a summary says what measured it |
 | `clarity` | Clarity's version, `2` (`1` for v1, which v2's rules re-measure). Without it the summary is pre-release: `gradeSummary` returns `re-measure` ([Versions](#versions)) |
 | `protocol_version` | How it was measured. A site grades it only with a rubric for the same protocol |
@@ -1529,8 +1529,8 @@ from real use, and nothing device-unique.
 | `app_version` | The kiosk's version name |
 | `viewport` | `css` (CSS px), `dpr` (device pixel ratio), `default_dpr` (density / 160) |
 | `runs` | `attempted`, `graded` |
-| `pages` | Per page (`light`, `typical-nocam`, `typical`, `heavy`): `inp_ms` (median), `open_ms` (median; rubric 2: to the first screen drawn), `blocking_ms` (median, rubric 2), `usable_ms` (median, detail), `scroll` (`fps`, `p95_ms`, `scrolled_px`: medians; `sf_valid` per run; `runs`: each run's `p95_ms`, `jank_pct`, `frozen_pct`, `fps`, `n`), `updates` (`latency_p95_ms`, `latency_median_ms`: medians of change to screen; `pacing_p95_ms`, detail; `runs`: each run's `latency_n`, `latency_median_ms`, `latency_p95_ms` and `frames`, the stats of the frames that had a change to draw), `scroll.during_updates` (per run, how many swipes ran during the updates), `camera` (`runs`: each run's worst stream's `first_frame_ms`, `shown_pct`, `max_gap_ms`, `stall_total_ms`; empty on a page without streams; `path`: what the graded streams played over, `web_rtc` since protocol 6, `null` without streams; `fallback`: the page's cameras over HLS, detail, `path` and `runs` as above, `null` before protocol 6 and without streams; a run's record is `{"timed_out": true}` with the numbers `null` when the page didn't finish before its streams were measured), `timed_out_runs` (protocol 7: in how many runs the page didn't finish within the runner's deadline; their unmeasured tasks are in the runs as failing: `inp_ms` at the deadline, `blocking_ms` at it when the main thread was never free, `open_ms` at it only when the view was never drawn (drawn but never free keeps its real open), `{"timed_out": true}` records for `scroll`, `updates` and `camera`), `runs` (how many runs measured `tap`, `scroll`, `updates`, `open`, `blocking`, `camera`) |
-| `restart_ms` | Process start to a usable reference dashboard (median; to engine ready before protocol 4) |
+| `pages` | Per page (`light`, `typical-nocam`, `typical`, `heavy`): `inp_ms` (median), `open_ms` (median; rubric 2: to the first screen drawn), `blocking_ms` (median, rubric 2), `usable_ms` (median, detail; rounded), the graded medians (`inp_ms`, `open_ms`, `blocking_ms`) unrounded since `/3`, `scroll` (`fps`, `p95_ms`, `scrolled_px`: medians; `sf_valid` per run; `runs`: each run's `p95_ms`, `jank_pct`, `frozen_pct`, `fps`, `n`), `updates` (`latency_p95_ms`, `latency_median_ms`: medians of change to screen; `pacing_p95_ms`, detail; `runs`: each run's `latency_n`, `latency_median_ms`, `latency_p95_ms` and `frames`, the stats of the frames that had a change to draw), `scroll.during_updates` (per run, how many swipes ran during the updates), `camera` (`runs`: each run's worst stream's `first_frame_ms`, `shown_pct`, `max_gap_ms`, `stall_total_ms`; empty on a page without streams; `path`: what the graded streams played over, `web_rtc` since protocol 6, `null` without streams; `fallback`: the page's cameras over HLS, detail, `path` and `runs` as above, `null` before protocol 6 and without streams; a run's record is `{"timed_out": true}` with the numbers `null` when the page didn't finish before its streams were measured), `timed_out_runs` (protocol 7: in how many runs the page didn't finish within the runner's deadline; their unmeasured tasks are in the runs as failing: `inp_ms` at the deadline, `blocking_ms` at it when the main thread was never free, `open_ms` at it only when the view was never drawn (drawn but never free keeps its real open), `{"timed_out": true}` records for `scroll`, `updates` and `camera`), `runs` (how many runs measured `tap`, `scroll`, `updates`, `open`, `blocking`, `camera`) |
+| `restart_ms` | Process start to a usable reference dashboard (median, unrounded since `/3`; to engine ready before protocol 4) |
 | `gaps` | Measurement facts that leave it short: "1 of 3 graded runs failed or are missing", "heavy: scrolling rests on rAF only in 1 run(s)…". Empty when complete |
 | `not_comparable` | Why the numbers can't be compared with other frames' (e.g. not at the default zoom), or `null` |
 | `report` | A relative path or URL of the full report (`--report-url`) |
@@ -1544,7 +1544,11 @@ The levels need each run's measurements (each run gets a level, then the median 
 is why the summary carries `runs` and not only medians. Medians are kept for display. Fields are only
 added within a version; a change of meaning is a new one (`ram` and `apk` were added within `/2`,
 2026-11-13, and `notes` with #201; `grade.ts` ignores them). `/2` (2026-11-12, rubric v5): `updates`
-carries change to screen and its runs are latency records, where `/1` had frame pacing.
+carries change to screen and its runs are latency records, where `/1` had frame pacing. `/3`
+(2026-11-14, rubric 2, Clarity v2): `open_ms` is to the first screen drawn, where `/2` had it to
+usable; `blocking_ms` and `usable_ms` are new; and the graded medians (`inp_ms`, `open_ms`,
+`blocking_ms`, `restart_ms`) go out unrounded, as the report graded them, so rounding can't carry a
+value across a band's edge (a 600.4 ms blocking median is poor; 600 isn't). A site reads `/3`.
 
 ### Protocol and rubric versions
 

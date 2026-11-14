@@ -156,6 +156,11 @@
    "metric": "blocking_ms",
    "value": 601,
    "band": "poor"
+  },
+  {
+   "metric": "blocking_ms",
+   "value": 600.4,
+   "band": "poor"
   }
  ],
  "frames": [

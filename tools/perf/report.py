@@ -478,6 +478,12 @@ def page_version(page):
     return page.get("protocol"), None
 
 
+def recorded_clarity(ref):
+    """The one Clarity version every graded page recorded, or None (pre-release, or mixed)."""
+    cl = (ref or {}).get("clarity") or []
+    return cl[0] if len(cl) == 1 else None
+
+
 def is_current(ref):
     """Every page of the graded runs ran this rubric's protocol, in this Clarity version (v2 now)."""
     return bool(ref) and ref.get("protocols") == [G.PROTOCOL_VERSION] and ref.get("clarity") == [G.CLARITY]
@@ -1378,6 +1384,9 @@ def build(run_dir, apks=(), budgets=None):
         if None in (ref.get("clarity") or [None]):
             # Before v1 (2026-11-14): never graded as v1, whatever its protocol's number.
             reasons.append(f"{G.PRE_RELEASE} (protocol {', '.join(G.protocol_name(p) for p in ref['protocols'])}): re-measure")
+        elif recorded_clarity(ref) not in (None, G.CLARITY):
+            # Another Clarity version (v1 under rubric 2): its own rules only, as grade.py says.
+            reasons.append(f"measured with Clarity v{recorded_clarity(ref)}; these rules are Clarity v{G.CLARITY}'s: re-measure")
         else:
             reasons.append(f"the pages ran protocol {', '.join(G.protocol_name(p) for p in ref['protocols'])}; "
                            f"this rubric is for protocol {G.PROTOCOL_VERSION}")
@@ -1418,9 +1427,10 @@ def build(run_dir, apks=(), budgets=None):
     rep = {
         "schema": SCHEMA,
         "protocol_version": (ref["protocols"][0] if ref and len(ref["protocols"]) == 1 else None),
-        # Clarity's version (v1 from 2026-11-14); None for a report from before it, which the site
-        # shows as "re-measure".
-        "clarity": G.CLARITY if is_current(ref) else None,
+        # The Clarity version the pages ran (v1 from 2026-11-14), as they recorded it: a v1 run rebuilt
+        # by v2's code stays 1 (then re-measured, never graded by v2's rules). None for a report from
+        # before v1, or pages of mixed versions; the site shows those as "re-measure".
+        "clarity": recorded_clarity(ref),
         "measured_on": device.get("measured_on"),
         "runs_attempted": attempted,
         "frame": {"id": device["frame"], "name": name,

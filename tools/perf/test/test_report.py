@@ -1224,7 +1224,23 @@ class Build(unittest.TestCase):
         rep = self.build_with(protocol=G.PROTOCOL_VERSION + 1, clarity=G.CLARITY)
         self.assertIn(f"the pages ran protocol {G.PROTOCOL_VERSION + 1}; this rubric is for protocol {G.PROTOCOL_VERSION}",
                       rep["grade"]["provisional_reasons"])
-        self.assertIsNone(rep["clarity"])
+        self.assertEqual(rep["clarity"], G.CLARITY)          # as the pages recorded it; the protocol says the rest
+
+    def test_a_v1_run_rebuilt_keeps_its_clarity(self):
+        """#264's CodeRabbit: a marked v1 run rebuilt by v2's code says clarity 1, not null, and is
+        re-measured (never graded by v2's rules), in the report and in both graders from its summary."""
+        rep = self.build_with(protocol=1, clarity=1)
+        self.assertEqual((rep["clarity"], rep["protocol_version"]), (1, 1))
+        why = "measured with Clarity v1; these rules are Clarity v2's: re-measure"
+        self.assertIn(why, rep["grade"]["provisional_reasons"])
+        s = S.summarise(rep, allow_provisional=True)
+        self.assertEqual((s["clarity"], s["protocol_version"]), (1, 1))
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("gw_test_summary", os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_summary.py"))
+        ts_mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(ts_mod)
+        for g in (G.grade_summary(s), ts_mod.ts_grades([s])[0]):
+            self.assertEqual((g["status"], g["grade"], g["why"]), ("re-measure", None, why))
 
     def test_this_clarity_is_this_clarity(self):
         self.assertEqual((self.rep["clarity"], self.rep["protocol_version"]), (G.CLARITY, G.PROTOCOL_VERSION))

@@ -103,7 +103,7 @@ class Export(unittest.TestCase):
         self.assertEqual(s, S.summarise(self.reps["B"], "reports/aqara-s1-plus.json"))
         self.assertEqual(json.loads(json.dumps(s)), s)
         self.assertEqual(set(s), SUMMARY_KEYS)
-        self.assertEqual(s["schema"], "glassworks.perf-summary/2")
+        self.assertEqual(s["schema"], "glassworks.perf-summary/3")
         self.assertEqual(s["test"], "Clarity")                     # the name, from rubric.json
         self.assertEqual((s["protocol_version"], s["report_schema"]), (G.PROTOCOL_VERSION, "glassworks.perf/4"))
         self.assertEqual(s["measured_on"], "2026-11-12")
@@ -320,6 +320,22 @@ class Parity(unittest.TestCase):
         for g in (py, ts):
             self.assertEqual((g["status"], g["grade"]), ("re-measure", None))
             self.assertEqual(g["why"], "measured with Clarity v1; these rules are Clarity v2's: re-measure")
+
+    def test_graded_medians_go_out_unrounded(self):
+        """#264's CodeRabbit (/3): a blocking median of 600.4 ms is poor; rounded to 600 it would read
+        needs-improvement in the summary but poor in the report. Every graded median goes out as the
+        report graded it, and both graders band it as the report did."""
+        rep = json.loads(json.dumps(self.reps["B"]))
+        t = rep["graded"]["reference"]["tiers"]["typical-nocam"]
+        t["blocking_ms"] = dict(t["blocking_ms"], median=600.4)
+        t["load_ms"] = dict(t["load_ms"], median=2500.5)
+        rep["graded"]["reference"]["start_ms"] = dict(rep["graded"]["reference"]["start_ms"], median=2500.5)
+        s = S.summarise(rep, allow_provisional=True)
+        p = s["pages"]["typical-nocam"]
+        self.assertEqual((p["blocking_ms"], p["open_ms"], s["restart_ms"]), (600.4, 2500.5, 2500.5))
+        ts, py = ts_grades([s])[0], G.grade_summary(s)
+        self.assertEqual((py["bands"]["typical-nocam"]["blocking"], py["bands"]["typical-nocam"]["load"]), ("poor", "needs-improvement"))
+        self.assertEqual(ts["bands"], py["bands"])
 
     def test_not_comparable_wins_over_a_missing_protocol_in_both(self):
         """--skip-reference: nothing measured, so no protocol either. Both say why, not "re-measure"."""
