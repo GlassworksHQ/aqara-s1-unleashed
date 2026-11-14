@@ -53,8 +53,8 @@ interface SpeakerMedia {
  * and talks ([PanelEvent.SpeakerClaimed]) and reports voice timers as [PanelEvent.TimersChanged] and
  * [PanelEvent.TimerFinished].
  *
- * The pane always has its entities, also when [voiceEnabled] is false, because the panel has always
- * shown them. Without voice it starts no microphone and no controller.
+ * The core starts it only while voice is on (its switch, [AssistDefinition.switch]), and may stop and start
+ * it again while the panel runs. Its entities stay while it is off, because the panel has always shown them.
  *
  * The core keeps the speaker. It hands over [player] (the voice channel, shared with announcements),
  * [speaker] (the music to pause), [resolveUrl] and [wakeChime] (the chime player is shared with timers).
@@ -64,7 +64,6 @@ interface SpeakerMedia {
  */
 class AssistPane(
     private val ctx: PaneContext,
-    private val voiceEnabled: Boolean,
     private val player: UrlPlayer,
     private val speaker: SpeakerMedia,
     private val resolveUrl: (String) -> String,
@@ -113,7 +112,6 @@ class AssistPane(
     }
 
     override fun start() {
-        if (!voiceEnabled) return
         val cfg = VoiceConfig(threshold = prefs.threshold, micGain = prefs.micGain)
         val engine = createInput(cfg, prefs.wakeWord) { id -> prefs.wakeWord = id }
         engine.onError = { msg -> dispatch(VoiceEvent.Error(msg, local = true)) }
@@ -131,6 +129,8 @@ class AssistPane(
         )
         engine.controller = c
         controller = c
+        // Started again while the server runs (voice turned on): bind() has run already.
+        server?.voice = c
         input = engine
         engine.start(muted = prefs.micMuted)
         watchdog = Executors.newSingleThreadScheduledExecutor { r -> Thread(r, "assist-watchdog").apply { isDaemon = true } }
@@ -138,14 +138,19 @@ class AssistPane(
     }
 
     override fun stop() {
+        val running = controller != null
+        // Turned off mid-run: end the run, so its Idle resumes the music and lets go of the speaker. Closed,
+        // not only cancelled: a wake word on its way from the microphone can't start a new run.
+        controller?.close()
         watchdog?.shutdownNow()
         watchdog = null
         input?.stop()
         input = null
-        // The server outlives the panes by a moment while the panel stops: take the stopped controller back.
+        // The server outlives the pane (voice turned off, or the panel stopping): take the stopped controller back.
         server?.let { if (it.voice === controller) it.voice = null }
         controller = null
-        server = null
+        // No voice, no timer reports: the board would stand still.
+        if (running) ctx.emit(PanelEvent.TimersChanged(emptyList()))
     }
 
     override fun onEvent(event: PanelEvent) {

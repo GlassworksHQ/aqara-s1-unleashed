@@ -86,6 +86,9 @@ def shell(cmd):
         out = [f"{t - 5:10.3f}  31236  31237 I S1ESPHome: ESPHome device 's1-panel' mac 00:00:00:00:00:00, voice={'true' if voice else 'false'}"]
         if s.get("sendspin_enabled", "true") == "true":
             out.append(f"{t - 4.9:10.3f}  31236  31237 I S1Sendspin: Sendspin player starting (client id test)")
+        for pane in ("wall-base", "time-zone", "diagnostics"):   # #67: the kiosk says what each switch is
+            on = s.get(pane.replace("-", "_") + "_enabled", "true") == "true"
+            out.append(f"{t - 4.8:10.3f}  31236  31237 I S1ESPHome: Pane {pane} {'on' if on else 'off'}")
         if voice and s.get("mic_muted", "false") != "true":
             out.append(f"{t - 3:10.3f}  31236  31237 I S1Voice: Microphone open: source=6 buffer=20480")
         if os.environ.get("FAKE_IDLE_SCREEN_OFF") and " -t 1" not in cmd:
@@ -129,11 +132,13 @@ def shell(cmd):
     if cmd == "ps -A -o PID,NAME":
         return "  PID NAME\n" + "".join(f"{p} {n}\n" for n, p in PIDS.items()) + "  1 init\n"
     if cmd == "dumpsys meminfo":
-        # A pane turned on with its extra adds to the app's PSS: Assist 30 MB, Sendspin 10 MB.
+        # A pane turned on with its extra adds to the app's PSS: Assist 30 MB, Sendspin 10 MB, the wall
+        # base 3 MB, the time zone 1 MB, diagnostics 2 MB.
         on = state("settings.json", {})
         # Assist costs its 30 MB while its microphone runs (voice on, not muted), as on the S1.
         assist = on.get("voice_enabled") == "true" and on.get("mic_muted", "false") != "true"
-        main = 190_000 + (30_000 if assist else 0) + (10_000 if on.get("sendspin_enabled") == "true" else 0)
+        main = 190_000 + (30_000 if assist else 0) + (10_000 if on.get("sendspin_enabled") == "true" else 0) + sum(
+            kb for k, kb in (("wall_base_enabled", 3_000), ("time_zone_enabled", 1_000), ("diagnostics_enabled", 2_000)) if on.get(k) == "true")
         rows = {PKG + ":gpu_disable_art_image_": 200_000, PKG: main, PKG + ":sandboxed_tab_disable_art_image_24": 180_000, "otbr-agent": 2_500}
         body = "".join(f"    {v:,}K: {n} (pid {PIDS[n]}{' / activities' if n == PKG else ''})\n" for n, v in rows.items())
         return "Total PSS by process:\n" + body + "\nTotal PSS by OOM adjustment:\n"

@@ -96,7 +96,7 @@ class SettingsMenuTest {
         // else yet and say so; the radio gives its own, which asks before turning off.
         val m = menu().associateBy { it.id }
         assertEquals("Voice", m.getValue("voice").master!!.title)
-        assertEquals(true, m.getValue("voice").master!!.restartsApp)
+        assertFalse("voice turns on and off live (#67)", m.getValue("voice").master!!.restartsApp)
         assertEquals(listOf("note"), titles(m.getValue("voice").items))
         assertEquals(dev.glassworks.pane.NO_SETTINGS, (m.getValue("sendspin").items[0] as SettingsItem.Note).text())
         assertEquals(null, m.getValue("dashboard").master)

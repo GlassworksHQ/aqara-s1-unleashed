@@ -24,6 +24,7 @@ import dev.glassworks.engine.PageHost
 import dev.glassworks.engine.PagePort
 import dev.glassworks.pane.SettingsItem
 import dev.glassworks.pane.applyFrom
+import dev.glassworks.pane.intentExtras
 import dev.glassworks.pane.paneSections
 import dev.glassworks.pane.settingsOrder
 import dev.glassworks.platform.Platform
@@ -75,9 +76,6 @@ class MainActivity : Activity() {
     /** The panes on setup's Panes step, each with its steps (only usable ones). */
     private val setupPanes by lazy { glassworks.setupPanes(this) }
     private val paneSteps by lazy { setupPanes.flatMap { it.steps } }
-
-    /** A Panes card that only applies at start (voice) changed: restart once setup is done. */
-    private var restartAfterSetup = false
 
     /** "Sign in on this panel instead" was chosen: don't cover HA's login page again (this process). */
     private var usePanelLogin = false
@@ -164,8 +162,6 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // A voice change made in setup restarts the app at Done, also if the activity was recreated meanwhile.
-        restartAfterSetup = savedInstanceState?.getBoolean(STATE_RESTART_AFTER_SETUP) == true
         prefs = KioskPrefs(this)
         glassworks.paneDefinitions(this) // first: a step's one-time check runs before discovery can save an HA URL
         HaAuth.init(this)
@@ -197,12 +193,7 @@ class MainActivity : Activity() {
             onSkipHa = ::onSkipHaSetup
             onClosePreview = ::closeSetupPreview
             onImprovAction = ::onImprovAction
-            onPanesDone = { restart ->
-                // Voice on or off: PanelDevice reads it at start. Restart once setup is done, so the
-                // panes' own steps (the radio's) come first.
-                if (restart) restartAfterSetup = true
-                if (!setupPreview) refreshSetup()
-            }
+            onPanesDone = { if (!setupPreview) refreshSetup() }
             onStepDone = { refreshSetup() }
         }
         threadJoinOverlay = sh.edm.s1kiosk.setup.ThreadJoinOverlay(this).apply {
@@ -358,10 +349,7 @@ class MainActivity : Activity() {
             setupOverlay.render(setupModel(d, d.step, d.done, preview = false))
         } else if (setupOverlay.isShowing && setupOverlay.model?.step != SetupFlow.DONE) {
             Log.i(TAG, "Setup complete; loading the dashboard")
-            setupOverlay.finish {
-                if (restartAfterSetup) handler.postDelayed({ restartProcess() }, 1_800) // after Done shows
-                else loadDashboardIfNeeded()
-            }
+            setupOverlay.finish { loadDashboardIfNeeded() }
         }
         syncImprovInline()
     }
@@ -664,8 +652,8 @@ class MainActivity : Activity() {
             prefs.presenceRangeM = intent.getFloatExtra("presence_range_m", 0f)
             glassworks.screen.applyPresenceRange()
         }
-        // The panes' own extras (voice, Sendspin, the wall base, ...): their definitions.
-        if (panes.flatMap { it.extras }.applyFrom(intent)) needsRestart = true
+        // The panes' extras (their on/off, then their own settings): their definitions.
+        if (panes.intentExtras().applyFrom(intent)) needsRestart = true
         intent.getStringExtra("api_key")?.let { key ->
             if (KioskPrefs.decodeApiKey(key) != null) prefs.apiKey = key
             else Log.w(TAG, "api_key must be base64 of exactly 32 bytes; ignored")
@@ -812,11 +800,6 @@ class MainActivity : Activity() {
             .set(AlarmManager.RTC, System.currentTimeMillis() + 600, pi)
         finishAffinity()
         exitProcess(0)
-    }
-
-    override fun onSaveInstanceState(outState: Bundle) {
-        super.onSaveInstanceState(outState)
-        outState.putBoolean(STATE_RESTART_AFTER_SETUP, restartAfterSetup)
     }
 
     // ---- back: navigate back inside the page; never leave the kiosk
@@ -1076,7 +1059,6 @@ class MainActivity : Activity() {
         internal const val READY_FALLBACK_MS = 15_000L
         /** ... and this long while Home Assistant's frontend says it is still loading. */
         internal const val LAUNCH_FALLBACK_MS = 45_000L
-        private const val STATE_RESTART_AFTER_SETUP = "restart_after_setup"
         private const val SETUP_TICK_MS = 2_000L
         private const val SETTINGS_TICK_MS = 2_000L
     }

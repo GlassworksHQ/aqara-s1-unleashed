@@ -8,7 +8,9 @@
 #   - Opens the test page and the reference dashboards with the kiosk's one-off `--es open` extra.
 #     The pages are served by the fake Home Assistant on this machine over `adb reverse`.
 #   - With --pane-ram only: turns the switchable panes off and on with the kiosk's own extras
-#     (`--ez voice_enabled`, `--ez sendspin_enabled`), and back to the given settings on exit.
+#     (`--ez voice_enabled`, `--ez sendspin_enabled`, `--ez wall_base_enabled`, `--ez time_zone_enabled`,
+#     `--ez diagnostics_enabled`), restarts the app after each change (`--ez restart true`), and puts
+#     them back to the given settings on exit.
 #   - Sends `--es screen on` (the kiosk's own wake intent) during warm-ups, so the screen stays on
 #     without changing the idle timeout.
 #   - Taps each reference dashboard's "Living room" toggle (`input tap`) and swipes it (`input swipe`),
@@ -130,7 +132,7 @@ point_back() {
     DASHBOARD_OK=0
     if [ -n "$set" ]; then
       # The panes and the dashboard together, checked in the kiosk's log (perfrun.py panes): the
-      # live settings first, then voice_enabled, which restarts the app. Retried if one didn't take.
+      # live settings first, then voice_enabled and a restart. Retried if one didn't take.
       if out=$(run panes --set "$set" --url "$RESTORE" --settle "$SWITCH_SETTLE" --tries 3 2>&1); then
         SWITCHED=0 PANES_SWITCHED=0
         if printf '%s\n' "$out" | tail -n 1 | grep -q '"voice_applied": false'; then
@@ -292,9 +294,9 @@ fi
 
 if [ -n "$PANE_RAM" ]; then
   # Each switchable pane on by itself against every pane off, on the typical reference dashboard.
-  # The first intent sets the live settings (Sendspin, the microphone mute) and points the kiosk at
-  # the dashboard; the second sets voice_enabled, which restarts the app, so every sample starts
-  # from a fresh process. perfrun.py panes reads the kiosk's log to check what it runs. A sample that
+  # The first intent sets the live settings (the other panes' switches, the microphone mute) and points
+  # the kiosk at the dashboard; the second sets voice_enabled and restarts the app, so every sample
+  # starts from a fresh process. perfrun.py panes reads the kiosk's log to check what it runs. A sample that
   # ran something else, or saw the screen go off, is left out of the report (docs/perf.md).
   log "RAM per pane: every pane off, then each on by itself, $((RUNS + 1)) cycles, the first a warm-up (they go back to $PANE_RAM after)"
   DASHBOARD_OK=0
@@ -310,7 +312,7 @@ if [ -n "$PANE_RAM" ]; then
       label=$([ "$state" = none ] && echo ref-panes-off || echo "ref-$state-on")
       log "panes: $label $([ "$k" = 0 ] && echo "warm-up (not recorded)" || echo "$k/$RUNS")"
       # Set and check what the kiosk runs (perfrun.py panes); each sample starts from a fresh app
-      # process, since voice_enabled restarts it. The idle sample records what it ran too.
+      # process, since the second intent restarts it. The idle sample records what it ran too.
       # A state that didn't take (a pane, or the dashboard intent refused: url_taken false) gets no
       # sample: it wouldn't be this label on the reference dashboard.
       if ! OUT=$dir run panes --set "$(pane_set "$state")" --url "http://127.0.0.1:$PORT/clarity-ref/typical" \

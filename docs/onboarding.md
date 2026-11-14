@@ -504,10 +504,11 @@ in."), with the way to change it second ("Use another network", "Add it by hand"
    instead". It is answered by a refresh token, or once the dashboard loads with the panes still to
    choose (a panel signed in with a cookie session).
 4. **Panes**: "Choose", one card per pane that offers one (`PaneDefinition.setupChoice`): Voice
-   (Assist and timers), Music (a Sendspin speaker) and the Zigbee / Thread radio, each with a switch.
-   It only chooses. **Continue** applies every card off the main thread, each within 30 s: voice and
-   music set their setting (a voice change restarts the app once setup is over, as `voice_enabled`
-   does), the radio's switch off sets the mode Off through `RadioController`. A refusal, or a card
+   (Assist and timers), Music (a Sendspin speaker), the Zigbee / Thread radio and the Wall base (the
+   S1's wired base), each with a switch. It only chooses. **Continue** applies every card off the main
+   thread, each within 30 s: voice, music and the wall base set their on/off (`PaneSwitch`), which the
+   panel applies at once, with no restart (#67); the radio's switch off sets the mode Off through
+   `RadioController`. A refusal, or a card
    that doesn't answer ("The Music didn't answer."), shows in rose with every problem listed and keeps
    the step; the cards are locked while it applies. Then each pane that is on has its own steps under
    Panes (`PaneDefinition.setupSteps`, each with a `title` for its row and a `screen` for the card).
@@ -520,8 +521,7 @@ in."), with the way to change it second ("Use another network", "Add it by hand"
    step stays until its Continue. Answering persists `setup_radio_done` (so does a mode set from the
    web installer over the setup channel). A panel set up before the radio step existed has it marked
    done once at the first start of the new build (`RadioDefinition`'s one-time check: a known HA,
-   `ha_seen`, an API key, a skipped HA step or a stored radio mode), so it never sees it. The wall
-   base has no on/off setting yet, so it has no card.
+   `ha_seen`, an API key, a skipped HA step or a stored radio mode), so it never sees it.
 5. **Done**: the lit stack on its own, "You're all set." and "Opening your dashboard…". The dashboard
    loads (unless it's already showing), then the screen fades out.
 
