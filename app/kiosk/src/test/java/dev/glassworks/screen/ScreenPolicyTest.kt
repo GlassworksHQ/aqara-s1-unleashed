@@ -11,6 +11,7 @@ import android.os.Looper
 import android.os.PowerManager
 import android.provider.Settings as AndroidSettings
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -90,9 +91,15 @@ class ScreenPolicyTest {
         screen.onStateChanged = { changes++ }
         keepOn.clear()
         assertEquals(1, shadowOf(context.contentResolver).getContentObservers(brightness).size)
+        // A wake holds the screen until the idle timeout (#257); stop() lets go of it.
+        screen.wake("test")
+        val awake = org.robolectric.shadows.ShadowPowerManager.getLatestWakeLock()
+        assertTrue("the wake holds the screen", awake.isHeld)
 
         screen.stop()
         screen.stop()
+
+        assertFalse("stop() let go of the wake lock", awake.isHeld)
 
         assertEquals("each source stopped once", listOf(1, 1), listOf(presence.stops, light.stops))
         assertEquals("brightness observer gone", 0, shadowOf(context.contentResolver).getContentObservers(brightness).size)
