@@ -59,6 +59,9 @@ All libraries share one banner drawing, so only its name and one-line descriptio
    [/brand#banners](https://www.glassworks.dev/brand#banners) at the top of the library's README,
    with the file name swapped for `banner-library-<name>`.
 
+CI checks step 3: `tools/check-brand-images.py` (in the scripts job) fails while a README points at
+a banner or badge that glassworks.dev doesn't serve yet.
+
 Don't draw a banner or badge by hand, and don't recolour one. If one is missing, add it to the
 generator.
 
