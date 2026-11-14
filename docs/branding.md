@@ -24,7 +24,8 @@ image follows GitHub's theme.
 
 | Part | Badge or banner | Where it goes |
 |---|---|---|
-| S1 Unleashed as a whole (a frame) | **Built on Glassworks** (`badge-on-*.svg`) | Top of [README.md](../README.md), already there. The badge rules also ask for it on the app's About screen |
+| The repository's front page | **Glassworks banner** (`banner-glassworks-on-*.svg`), then the status and roadmap badges | Top of [README.md](../README.md). /brand gives this banner to the org profile and the main README |
+| S1 Kiosk, the app on the core | **Built on Glassworks** (`badge-on-*.svg`) | Top of [app/README.md](../app/README.md). The badge rules also ask for it on the app's About screen |
 | A library in `app/libs/` | **Library banner** (`banner-library-<name>-on-*.svg`), then the MIT licence, status and roadmap badges | Top of that library's README. Copy the header of [improv's README](../app/libs/improv/README.md) |
 | Libraries in a list or table, where a banner doesn't fit | **Library badge** (`badge-library-on-*.svg`) | E.g. the Libraries section of [principles.md](principles.md) |
 | [Glassworks Principles](principles.md) | **Principles banner** (`banner-principles-on-*.svg`), then a part badge under each part's heading | `docs/principles.md` |
