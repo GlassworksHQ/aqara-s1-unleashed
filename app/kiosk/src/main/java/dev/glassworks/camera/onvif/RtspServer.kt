@@ -338,8 +338,8 @@ class RtspServer(
         }
 
         private fun authorized(req: RtspRequest): Boolean {
-            val cred = credentials() ?: return true
-            if (cred.first.isBlank()) return true
+            // Glassworks: no sign-in set means nobody gets the stream (upstream let everyone in).
+            val cred = credentials()?.takeIf { it.first.isNotBlank() } ?: return false
             return auth.verify(req.header("Authorization"), req.method, cred.first, cred.second)
         }
 

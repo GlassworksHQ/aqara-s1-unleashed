@@ -3,7 +3,7 @@
  * Ported from android-ip-camera: aguilaair/android-ip-camera, branch onvif-rtsp-motion, commit
  * 7b5e6f28; a fork of DigitallyRefined/android-ip-camera. Copyright (c) 2025 DigitallyRefined and
  * contributors. The licence text is in THIRD-PARTY-NOTICES.md and LICENSES/MIT.txt.
- * Changes: package only. */
+ * Changes: package; RFC 5737 addresses in the fixtures */
 
 package dev.glassworks.camera.onvif
 
@@ -57,13 +57,13 @@ class RtspProtocolTest {
     }
 
     @Test fun sdpContainsSpropAndProfileLevelId() {
-        val sdp = RtspSdp.build(sps, pps, "10.0.0.2", 1234)
+        val sdp = RtspSdp.build(sps, pps, "192.0.2.41", 1234)
         assertTrue(sdp.contains("m=video 0 RTP/AVP 96\r\n"))
         assertTrue(sdp.contains("a=rtpmap:96 H264/90000\r\n"))
         assertTrue(sdp.contains("profile-level-id=640028"))
         assertTrue(sdp.contains("sprop-parameter-sets=${Base64Lite.encode(sps)},${Base64Lite.encode(pps)}"))
         assertTrue(sdp.contains("a=control:trackID=0\r\n"))
-        assertTrue(sdp.startsWith("v=0\r\no=- 1234 1 IN IP4 10.0.0.2\r\n"))
+        assertTrue(sdp.startsWith("v=0\r\no=- 1234 1 IN IP4 192.0.2.41\r\n"))
         assertEquals("42e01f", RtspSdp.profileLevelId(null))
         assertFalse(RtspSdp.build(null, null, "h", 1).contains("sprop"))
     }

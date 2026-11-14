@@ -326,7 +326,8 @@ class OnvifServer(
     private fun creds(): Pair<String, String>? = credentials()?.takeIf { it.first.isNotBlank() }
 
     internal fun checkAuth(header: Element?, method: String, uri: String, headers: Map<String, String>): AuthResult {
-        val c = creds() ?: return AuthResult.OK
+        // Glassworks: no sign-in set means nobody gets in (upstream let everyone in).
+        val c = creds() ?: return AuthResult.MISSING
         val token = OnvifXml.find(header, "UsernameToken")
         if (token != null) return if (verifyUsernameToken(token, c)) AuthResult.OK else AuthResult.BAD
         if (headers["authorization"] != null) return if (httpAuthOk(method, uri, headers)) AuthResult.OK else AuthResult.BAD
@@ -350,7 +351,7 @@ class OnvifServer(
     }
 
     internal fun httpAuthOk(method: String, uri: String, headers: Map<String, String>): Boolean {
-        val c = creds() ?: return true
+        val c = creds() ?: return false
         val auth = headers["authorization"] ?: return false
         return when {
             auth.startsWith("Basic ", true) -> {

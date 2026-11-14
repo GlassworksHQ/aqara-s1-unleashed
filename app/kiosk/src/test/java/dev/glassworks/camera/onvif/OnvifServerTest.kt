@@ -3,7 +3,8 @@
  * Ported from android-ip-camera: aguilaair/android-ip-camera, branch onvif-rtsp-motion, commit
  * 7b5e6f28; a fork of DigitallyRefined/android-ip-camera. Copyright (c) 2025 DigitallyRefined and
  * contributors. The licence text is in THIRD-PARTY-NOTICES.md and LICENSES/MIT.txt.
- * Changes: package only. */
+ * Changes: package; RFC 5737 addresses in the fixtures; no sign-in set now
+ * means refused, and the socket test signs in. */
 
 package dev.glassworks.camera.onvif
 
@@ -25,9 +26,9 @@ class OnvifServerTest {
 
     private fun newServer(withCreds: Boolean = true, snapshot: (() -> ByteArray?)? = { byteArrayOf(1, 2, 3) }) = OnvifServer(
         port = 0,
-        host = { "192.168.3.194" },
+        host = { "192.0.2.41" },
         info = { OnvifDeviceInfo("Google", "Pixel Tablet", "0.14.0", "SER123", "tangorpro", "a1b2c3d4e5f6", "Living Room Tablet") },
-        stream = { OnvifStreamInfo("rtsp://192.168.3.194:8554/live", 1920, 1080, 30, 6000) },
+        stream = { OnvifStreamInfo("rtsp://192.0.2.41:8554/live", 1920, 1080, 30, 6000) },
         credentials = { if (withCreds) user to pass else null },
         snapshot = snapshot,
         enableDiscovery = false
@@ -142,11 +143,11 @@ class OnvifServerTest {
         assertEquals("1920", OnvifXml.text(OnvifXml.find(profiles, "Resolution"), "Width"))
         assertEquals("vs0", OnvifXml.text(profiles, "SourceToken"))
         val uri = parseOk(call(s, "<trt:GetStreamUri><trt:StreamSetup><tt:Stream>RTP-Unicast</tt:Stream><tt:Transport><tt:Protocol>RTSP</tt:Protocol></tt:Transport></trt:StreamSetup><trt:ProfileToken>sub</trt:ProfileToken></trt:GetStreamUri>", "/onvif/media_service"))
-        assertEquals("rtsp://192.168.3.194:8554/live", OnvifXml.text(uri.documentElement, "Uri"))
+        assertEquals("rtsp://192.0.2.41:8554/live", OnvifXml.text(uri.documentElement, "Uri"))
         val snap = parseOk(call(s, "<trt:GetSnapshotUri><trt:ProfileToken>main</trt:ProfileToken></trt:GetSnapshotUri>", "/onvif/media_service"))
         assertTrue(OnvifXml.text(snap.documentElement, "Uri")!!.endsWith("/onvif/snapshot.jpg"))
         val m2 = parseOk(call(s, "<tr2:GetStreamUri><tr2:Protocol>RTSP</tr2:Protocol><tr2:ProfileToken>main</tr2:ProfileToken></tr2:GetStreamUri>", "/onvif/media2_service"))
-        assertEquals("rtsp://192.168.3.194:8554/live", OnvifXml.text(m2.documentElement, "Uri"))
+        assertEquals("rtsp://192.0.2.41:8554/live", OnvifXml.text(m2.documentElement, "Uri"))
         val m2p = parseOk(call(s, "<tr2:GetProfiles><tr2:Type>All</tr2:Type></tr2:GetProfiles>", "/onvif/media2_service")).documentElement
         assertEquals(2, m2p.getElementsByTagNameNS(OnvifNs.TR2, "Profiles").length)
     }
@@ -164,7 +165,7 @@ class OnvifServerTest {
         val s = newServer()
         val created = parseOk(call(s, "<tev:CreatePullPointSubscription><tev:InitialTerminationTime>PT60S</tev:InitialTerminationTime></tev:CreatePullPointSubscription>", "/onvif/events_service")).documentElement
         val addr = OnvifXml.text(created, "Address")!!
-        val path = addr.substringAfter("192.168.3.194:${s.localPort}")
+        val path = addr.substringAfter("192.0.2.41:${s.localPort}")
         assertTrue(path.startsWith("/onvif/pullpoint/"))
 
         val pull = "<tev:PullMessages><tev:Timeout>PT2S</tev:Timeout><tev:MessageLimit>10</tev:MessageLimit></tev:PullMessages>"
@@ -194,21 +195,41 @@ class OnvifServerTest {
         assertEquals(400, call(s, pull, path).status)
     }
 
-    @Test fun `no credentials configured means open access`() {
+    @Test fun `no sign-in set means nobody gets in, but date and time is open`() {
         val s = newServer(withCreds = false)
-        assertEquals(200, call(s, "<trt:GetProfiles/>", "/onvif/media_service", header = "").status)
+        assertEquals(401, call(s, "<trt:GetProfiles/>", "/onvif/media_service", header = "").status)
+        assertEquals(401, call(s, "<trt:GetProfiles/>", "/onvif/media_service").status) // a token changes nothing
+        assertEquals(200, call(s, "<tds:GetSystemDateAndTime/>", header = "").status)
+        val basic = mapOf("authorization" to "Basic " + OnvifBase64.encode("admin:".toByteArray()))
+        assertEquals(401, s.handle("GET", "/onvif/snapshot.jpg", basic, ByteArray(0)).status)
+    }
+
+    @Test fun `nothing listens until start`() {
+        val port = java.net.ServerSocket(0).use { it.localPort }
+        val s = OnvifServer(port = port, host = { "192.0.2.41" }, info = { error("unused") }, stream = { error("unused") },
+            credentials = { user to pass }, enableDiscovery = false).also { server = it }
+        java.net.ServerSocket(port).close()
+        s.start()
+        assertTrue(runCatching { java.net.ServerSocket(port).close() }.isFailure)
+        s.stop()
+        java.net.ServerSocket(port).close()
     }
 
     @Test fun `http server serves SOAP and snapshot over sockets`() {
-        val s = newServer(withCreds = false, snapshot = { byteArrayOf(9, 8, 7) })
+        val s = newServer(snapshot = { byteArrayOf(9, 8, 7) })
         s.start()
+        val basic = "Basic " + OnvifBase64.encode("$user:$pass".toByteArray())
         val c = URL("http://127.0.0.1:${s.localPort}/onvif/device_service").openConnection() as HttpURLConnection
         c.requestMethod = "POST"; c.doOutput = true
         c.setRequestProperty("Content-Type", "application/soap+xml")
+        c.setRequestProperty("Authorization", basic)
         c.outputStream.use { it.write(soap("<tds:GetDeviceInformation/>", "").toByteArray()) }
         assertEquals(200, c.responseCode)
         assertTrue(c.inputStream.readBytes().toString(Charsets.UTF_8).contains("Pixel Tablet"))
+        val anon = URL("http://127.0.0.1:${s.localPort}/onvif/snapshot.jpg").openConnection() as HttpURLConnection
+        assertEquals(401, anon.responseCode)
         val snap = URL("http://127.0.0.1:${s.localPort}/onvif/snapshot.jpg").openConnection() as HttpURLConnection
+        snap.setRequestProperty("Authorization", basic)
         assertEquals(200, snap.responseCode)
         assertEquals("image/jpeg", snap.contentType)
         assertTrue(byteArrayOf(9, 8, 7).contentEquals(snap.inputStream.readBytes()))
@@ -218,7 +239,7 @@ class OnvifServerTest {
 
     private val discovery = OnvifDiscovery(
         endpointUuid = { OnvifDiscovery.uuidFor("a1b2c3d4e5f6") },
-        xaddr = { "http://192.168.3.194:8000/onvif/device_service" },
+        xaddr = { "http://192.0.2.41:8000/onvif/device_service" },
         scopes = { OnvifDiscovery.defaultScopes("Living Room Tablet", "Pixel Tablet") }
     )
 
@@ -233,7 +254,7 @@ class OnvifServerTest {
         assertNotNull(reply)
         val doc = OnvifXml.parse(reply!!)!!.documentElement
         assertEquals(id, OnvifXml.text(doc, "RelatesTo"))
-        assertEquals("http://192.168.3.194:8000/onvif/device_service", OnvifXml.text(doc, "XAddrs"))
+        assertEquals("http://192.0.2.41:8000/onvif/device_service", OnvifXml.text(doc, "XAddrs"))
         assertTrue(OnvifXml.text(doc, "Scopes")!!.contains("onvif://www.onvif.org/Profile/Streaming"))
         assertTrue(OnvifXml.text(doc, "Scopes")!!.contains("onvif://www.onvif.org/name/Living%20Room%20Tablet"))
         assertTrue(OnvifXml.text(doc, "Types")!!.contains("NetworkVideoTransmitter"))

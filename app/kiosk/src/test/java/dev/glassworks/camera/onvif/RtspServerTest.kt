@@ -3,7 +3,8 @@
  * Ported from android-ip-camera: aguilaair/android-ip-camera, branch onvif-rtsp-motion, commit
  * 7b5e6f28; a fork of DigitallyRefined/android-ip-camera. Copyright (c) 2025 DigitallyRefined and
  * contributors. The licence text is in THIRD-PARTY-NOTICES.md and LICENSES/MIT.txt.
- * Changes: package only. */
+ * Changes: package; the client signs in by default, since Glassworks has no open
+ * access; new tests for no sign-in set and for no port before start(). */
 
 package dev.glassworks.camera.onvif
 
@@ -32,7 +33,7 @@ class RtspServerTest {
 
     private fun freePort() = ServerSocket(0).use { it.localPort }
 
-    private fun startServer(creds: Pair<String, String>?) {
+    private fun startServer(creds: Pair<String, String>? = USER) {
         port = freePort()
         server = RtspServer(port, { creds }, { counts += it })
         server.start()
@@ -49,7 +50,8 @@ class RtspServerTest {
 
     @After fun tearDown() { feeding.set(false); server.stop() }
 
-    private class Client(port: Int) {
+    /** [auth]: sent as Basic on every request, as ffmpeg does with credentials in the URL. */
+    private class Client(port: Int, private val auth: Pair<String, String>? = USER) {
         val sock = Socket("127.0.0.1", port).apply { soTimeout = 8000 }
         val input = DataInputStream(sock.getInputStream())
         val out = sock.getOutputStream()
@@ -58,6 +60,9 @@ class RtspServerTest {
         fun request(method: String, uri: String, headers: List<String> = emptyList()): Pair<String, String> {
             val sb = StringBuilder("$method $uri RTSP/1.0\r\nCSeq: ${++cseq}\r\n")
             headers.forEach { sb.append(it).append("\r\n") }
+            if (auth != null && headers.none { it.startsWith("Authorization:") }) {
+                sb.append("Authorization: Basic ${Base64Lite.encode("${auth.first}:${auth.second}".toByteArray())}\r\n")
+            }
             sb.append("\r\n")
             out.write(sb.toString().toByteArray()); out.flush()
             return readResponse()
@@ -88,7 +93,7 @@ class RtspServerTest {
     }
 
     @Test fun tcpInterleavedSessionReceivesRtp() {
-        startServer(null)
+        startServer()
         Thread.sleep(150) // let a keyframe cache SPS/PPS
         val c = Client(port)
         val url = "rtsp://127.0.0.1:$port/live"
@@ -138,7 +143,7 @@ class RtspServerTest {
 
     @Test fun digestAuthIsRequired() {
         startServer("admin" to "pw")
-        val c = Client(port)
+        val c = Client(port, auth = null)
         val url = "rtsp://127.0.0.1:$port/live"
         assertTrue(c.request("OPTIONS", url).first.startsWith("RTSP/1.0 200"))
         val (r401, _) = c.request("DESCRIBE", url)
@@ -154,7 +159,7 @@ class RtspServerTest {
 
     @Test fun describeWaitsForFirstKeyframeAndReportsDemand() {
         port = freePort()
-        server = RtspServer(port, { null }, { counts += it })
+        server = RtspServer(port, { USER }, { counts += it })
         server.start()
         feeding.set(false)
         Thread {
@@ -171,13 +176,37 @@ class RtspServerTest {
     }
 
     @Test fun unknownSessionAndBadTransport() {
-        startServer(null)
+        startServer()
         val c = Client(port)
         val url = "rtsp://127.0.0.1:$port/live"
         assertTrue(c.request("PLAY", url, listOf("Session: DEADBEEF")).first.startsWith("RTSP/1.0 454"))
         assertTrue(c.request("SETUP", "$url/trackID=0", listOf("Transport: RTP/AVP;multicast")).first.startsWith("RTSP/1.0 461"))
         assertTrue(c.request("RECORD", url).first.startsWith("RTSP/1.0 501"))
         c.sock.close()
+    }
+
+    @Test fun withNoSignInSetNobodyGetsTheStream() {
+        startServer(null)
+        val c = Client(port, auth = "admin" to "")
+        val url = "rtsp://127.0.0.1:$port/live"
+        assertTrue(c.request("OPTIONS", url).first.startsWith("RTSP/1.0 200"))
+        assertTrue(c.request("DESCRIBE", url).first.startsWith("RTSP/1.0 401"))
+        assertTrue(c.request("SETUP", "$url/trackID=0", listOf("Transport: RTP/AVP/TCP;unicast;interleaved=0-1")).first.startsWith("RTSP/1.0 401"))
+        c.sock.close()
+    }
+
+    @Test fun nothingListensUntilStart() {
+        port = freePort()
+        server = RtspServer(port, { USER }, { counts += it })
+        ServerSocket(port).close() // free: the constructor opened nothing
+        server.start()
+        assertTrue(runCatching { ServerSocket(port).close() }.isFailure)
+        server.stop()
+        ServerSocket(port).close() // and stop() let it go
+    }
+
+    private companion object {
+        val USER = "admin" to "pw"
     }
 
     @Suppress("unused") private fun InputStream.drain() { while (available() > 0) read() }
