@@ -2,7 +2,6 @@ package sh.edm.esphome
 
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Test
@@ -20,6 +19,7 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicReference
 
 /**
  * The server's keepalive (ApiServer.KEEPALIVE_MS): Home Assistant's aioesphomeapi doesn't ping a
@@ -156,7 +156,8 @@ class EspHomeKeepaliveTest {
      * #171: the answer to a keepalive ping can be read before the ping's write returns. Here it always
      * is, and the client must not be dropped at unresponsiveMs for a ping it answered. Without real
      * traffic after the answer: the test above sends its own ping, which hides this. Only latches order
-     * it (#204); the waits with a bound fail with the threads' state instead of letting the write through.
+     * it, and no step gives up after a time (#204). A hang guard for the whole test (2 min, far past the
+     * test's milliseconds) records the threads' state and then closes the socket, so a hang fails with it.
      */
     @Test
     fun anAnswerReadBeforeThePingsSendReturnsKeepsTheClient() {
@@ -172,15 +173,21 @@ class EspHomeKeepaliveTest {
         s.start()
         try {
             Socket(InetAddress.getLoopbackAddress(), s.localPort).use { sock ->
-                sock.soTimeout = 10_000
+                val hung = AtomicReference<String>()
+                val guard = Thread({
+                    try {
+                        Thread.sleep(120_000)
+                        hung.set(serverThreads()); hold.giveUp(); sock.close()
+                    } catch (_: InterruptedException) {}
+                }, "test-hang-guard").apply { isDaemon = true; start() }
+                fun checkHang() = hung.get()?.let { throw AssertionError("hung for 2 min; the threads then:\n$it") }
                 val out = sock.getOutputStream(); val inp = sock.getInputStream()
                 fun send(type: Int, payload: ByteArray = ByteArray(0)) { out.write(frame(type, payload)); out.flush() }
                 fun await(type: Int, what: String) {
                     while (true) {
-                        val t = try { readType(inp) } catch (e: java.net.SocketTimeoutException) {
-                            throw AssertionError("no $what within 10 s\n${serverThreads()}", e)
-                        }
-                        assertTrue("server closed a client that answered its ping", t != -1)
+                        val t = try { readType(inp) } catch (e: java.io.IOException) { checkHang(); throw e }
+                        checkHang()
+                        assertTrue("server closed a client that answered its ping (waiting for $what)", t != -1)
                         if (t == type) return
                     }
                 }
@@ -193,13 +200,13 @@ class EspHomeKeepaliveTest {
                 val tick = Thread({ s.keepaliveTick() }, "test-tick").apply { isDaemon = true; start() }
                 await(Msg.PING_REQUEST, "keepalive ping")
                 send(Msg.PING_RESPONSE)
-                assertTrue("the ping's write never returned\n${serverThreads()}", hold.released.await(10, TimeUnit.SECONDS))
-                tick.join(10_000)
-                assertFalse("keepaliveTick still running\n${serverThreads()}", tick.isAlive)
+                hold.released.await(); checkHang()
+                tick.join(); checkHang()
 
                 now.set(pinged + unresponsive + 1); s.keepaliveTick()
                 assertEquals("dropped a client that answered the ping", 1, s.connectionCount)
                 await(Msg.PING_REQUEST, "next keepalive ping")
+                guard.interrupt()
             }
         } finally { hold.giveUp(); s.stop() }
     }
