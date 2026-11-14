@@ -78,6 +78,15 @@ versions are the ones Gradle resolves.
 - **kissfft** (the 16-bit fixed-point `kiss_fft` and `kiss_fftr` the microfrontend uses).
   BSD-3-Clause, Copyright (c) 2003-2010 Mark Borgerding. Ported in the same file, from the same copy.
   https://github.com/mborgerding/kissfft
+- **android-ip-camera** (the motion detector, the RTSP server and the ONVIF server with
+  WS-Discovery). MIT, Copyright (c) 2025 DigitallyRefined and contributors. Ported from the
+  maintainer's fork, https://github.com/aguilaair/android-ip-camera (branch `onvif-rtsp-motion`,
+  commit `7b5e6f28b7cbcb0f06716365d995e3a5d5cf1050`; `H264Bitstream.kt` as upstream had it at
+  `90f9f80f0237832b1251f511592296e5ac5a630a`), itself a fork of
+  https://github.com/DigitallyRefined/android-ip-camera. In
+  `app/kiosk/src/main/java/dev/glassworks/camera/MotionDetectorCore.kt` and
+  `app/kiosk/src/main/java/dev/glassworks/camera/onvif/`. Those files stay under MIT, and each says
+  what changed.
 
 ### Kotlin and AndroidX
 
