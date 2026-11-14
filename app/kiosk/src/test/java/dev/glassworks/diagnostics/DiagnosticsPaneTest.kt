@@ -69,6 +69,40 @@ class DiagnosticsPaneTest {
         assertEquals(12, entities.size)
     }
 
+    @Test fun itKeepsTheLastHourForTheSettingsPage() {
+        val p = pane()
+        repeat(DiagnosticsPane.HOUR_SAMPLES + 5) { n -> samples += sample(n * 60_000L, CpuTimes(1000L + n * 100, 800L + n * 50), ticks = 100L + n, temperature = 40f + n) }
+        repeat(DiagnosticsPane.HOUR_SAMPLES + 5) { p.tick() }
+        val temps = p.lastHour("cpu_temperature")
+        assertEquals("an hour, no more", DiagnosticsPane.HOUR_SAMPLES, temps.size)
+        assertEquals("oldest first, the oldest five gone", 45f, temps.first(), 0f)
+        assertEquals(104f, temps.last(), 0f)
+        // Every sample, also the ones within the band Home Assistant doesn't get.
+        assertEquals(DiagnosticsPane.HOUR_SAMPLES, p.lastHour("memory_available").size)
+        assertEquals(sample(64 * 60_000L, CpuTimes(0, 0), 0).elapsedMs, p.lastSample!!.elapsedMs)
+        assertEquals(104f, p.current("cpu_temperature"))
+        samples += sample(65 * 60_000L, CpuTimes(9000, 5000), ticks = 200, temperature = 50f, rssi = null)
+        p.tick()
+        assertEquals("Wi-Fi gone: no reading now", null, p.current("wifi_signal"))
+        assertEquals("its hour stays for the line, a minute shorter", DiagnosticsPane.HOUR_SAMPLES - 1, p.lastHour("wifi_signal").size)
+        p.stop()
+        assertEquals(null, p.current("cpu_temperature"))
+        assertEquals(emptyList<Float>(), p.lastHour("cpu_temperature"))
+        assertEquals(null, p.lastSample)
+    }
+
+    @Test fun aReadingGoneForAnHourLeavesNoOldLine() {
+        // CodeRabbit on #235: the hour was the last 60 readings, so Wi-Fi gone for hours kept its old line.
+        val p = pane()
+        samples += sample(0, CpuTimes(1000, 800), ticks = 100)
+        p.tick()
+        assertEquals(listOf(-55f), p.lastHour("wifi_signal"))
+        repeat(DiagnosticsPane.HOUR_SAMPLES) { n -> samples += sample((n + 1) * 60_000L, CpuTimes(1100L + n * 100, 850L + n * 50), ticks = 101L + n, rssi = null) }
+        repeat(DiagnosticsPane.HOUR_SAMPLES) { p.tick() }
+        assertEquals("an hour later, nothing left of it", emptyList<Float>(), p.lastHour("wifi_signal"))
+        assertEquals(DiagnosticsPane.HOUR_SAMPLES, p.lastHour("cpu_temperature").size)
+    }
+
     @Test fun aFrameWithoutAThermalZoneHasNoTemperatureEntity() {
         val ids = pane(hasTemperature = false).entities().map { it.objectId }
         assertFalse("cpu_temperature" in ids)

@@ -209,7 +209,8 @@ async def plaintext(port):
 
 
 async def noise(port, key):
-    cli = APIClient("127.0.0.1", port, None, noise_psk=key, client_info="Home Assistant test")
+    # Home Assistant passes its own zone (esphome/manager.py); the panel asks for it once subscribed.
+    cli = APIClient("127.0.0.1", port, None, noise_psk=key, client_info="Home Assistant test", timezone="Europe/Madrid")
     await cli.connect(login=True)
     info = await cli.device_info()
     entities, _ = await cli.list_entities_services()

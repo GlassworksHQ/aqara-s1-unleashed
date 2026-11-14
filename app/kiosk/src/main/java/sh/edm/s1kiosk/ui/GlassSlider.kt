@@ -35,6 +35,10 @@ class GlassSlider(
     var onMove: ((Float) -> Unit)? = null
     var onSet: ((Float) -> Unit)? = null
 
+    /** A finger is on it: a value read from elsewhere waits until it lets go. */
+    var dragging = false
+        private set
+
     private val dp = resources.displayMetrics.density
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val thumbR = 11 * dp
@@ -91,14 +95,14 @@ class GlassSlider(
         if (!isEnabled) return false
         when (e.actionMasked) {
             MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE -> {
-                if (e.actionMasked == MotionEvent.ACTION_DOWN) downValue = value
+                if (e.actionMasked == MotionEvent.ACTION_DOWN) { downValue = value; dragging = true }
                 parent?.requestDisallowInterceptTouchEvent(true)
                 val v = valueAt(e.x)
                 if (v != value) { value = v; onMove?.invoke(v) }
             }
-            MotionEvent.ACTION_UP -> { value = valueAt(e.x); onMove?.invoke(value); onSet?.invoke(value) }
+            MotionEvent.ACTION_UP -> { dragging = false; value = valueAt(e.x); onMove?.invoke(value); onSet?.invoke(value) }
             // The gesture was taken away (a scroll, the system): nothing is set, the slider goes back.
-            MotionEvent.ACTION_CANCEL -> { value = downValue; onMove?.invoke(value); announce() }
+            MotionEvent.ACTION_CANCEL -> { dragging = false; value = downValue; onMove?.invoke(value); announce() }
         }
         return true
     }

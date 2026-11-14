@@ -197,6 +197,14 @@ class ApiServer(
      */
     @Volatile var onStatesSubscribed: ((clientInfo: String, remote: InetAddress?, authenticated: Boolean) -> Unit)? = null
 
+    /**
+     * Called (on a connection thread) with Home Assistant's time zone. The server asks for the time
+     * (`GetTimeRequest`) once an authenticated client subscribes to states, and Home Assistant's answer
+     * carries its zone (`GetTimeResponse.timezone`) as a POSIX `TZ` rule, like
+     * `CET-1CEST,M3.5.0,M10.5.0/3`: aioesphomeapi turns HA's IANA zone into one.
+     */
+    @Volatile var onTimeZone: ((String) -> Unit)? = null
+
     /** Called after a provisioned key became active (or was cleared), e.g. to update the mDNS TXT. */
     @Volatile var onKeyActivated: (() -> Unit)? = null
 
@@ -650,7 +658,11 @@ class ApiServer(
                     send(listOf(Frame(Msg.NOISE_ENCRYPTION_SET_KEY_RESPONSE, ProtoWriter().bool(1, r.success).toByteArray())), wait = true)
                     if (r.activate) scheduleActivation()
                 }
-                Msg.PING_RESPONSE, Msg.GET_TIME_RESPONSE -> Unit
+                Msg.PING_RESPONSE -> Unit
+                // Only an authenticated client was asked: anyone else's zone is not Home Assistant's.
+                Msg.GET_TIME_RESPONSE -> if (authenticated) m.string(2).takeIf { it.isNotBlank() }?.let { zone ->
+                    try { onTimeZone?.invoke(zone) } catch (t: Throwable) { EspHomeLog.w("onTimeZone failed", t) }
+                }
                 Msg.DEVICE_INFO_REQUEST -> reply(Msg.DEVICE_INFO_RESPONSE, deviceInfo())
                 Msg.DEVICE_CAPABILITIES_REQUEST -> reply(Msg.DEVICE_CAPABILITIES_RESPONSE, capabilities())
                 Msg.SENDSPIN_PAIRING_TOKEN_REQUEST -> reply(Msg.SENDSPIN_PAIRING_TOKEN_RESPONSE, sendspinToken())
@@ -664,6 +676,7 @@ class ApiServer(
                 Msg.SUBSCRIBE_STATES_REQUEST -> {
                     subscribeStates()
                     try { onStatesSubscribed?.invoke(clientInfo, socket.inetAddress, authenticated) } catch (t: Throwable) { EspHomeLog.w("onStatesSubscribed failed", t) }
+                    if (authenticated && onTimeZone != null) send(listOf(Frame(Msg.GET_TIME_REQUEST, ByteArray(0))))
                 }
                 Msg.LIGHT_COMMAND, Msg.SWITCH_COMMAND, Msg.NUMBER_COMMAND, Msg.SELECT_COMMAND,
                 Msg.BUTTON_COMMAND, Msg.TEXT_COMMAND, Msg.MEDIA_PLAYER_COMMAND, Msg.UPDATE_COMMAND -> {

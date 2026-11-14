@@ -240,6 +240,19 @@ class SendspinRunsTest {
     }
 
     @Test
+    fun thePageNamesTheServerOfTheSessionThatRunsNow() {
+        // CodeRabbit on #235: the address came from the retry cache, set only once a session ended.
+        assertEquals(null, player.serverUrl)
+        player.start()
+        val until = System.currentTimeMillis() + 3_000
+        while (conns.isEmpty() && System.currentTimeMillis() < until) Thread.sleep(10)
+        assertTrue(conns[0].running.await(3, java.util.concurrent.TimeUnit.SECONDS))
+        assertEquals("ws://192.0.2.10:8927/sendspin", player.serverUrl)
+        player.stop()
+        assertEquals(null, player.serverUrl)
+    }
+
+    @Test
     fun theStoppedLoopLeavesTheNewSessionAndItsStatusAlone() {
         val oldThread = stopAndStartWhileTheOldReaderIsStuck()
         assertEquals("ready, paired with Music Assistant", player.statusText())

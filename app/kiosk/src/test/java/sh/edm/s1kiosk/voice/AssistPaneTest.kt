@@ -46,7 +46,7 @@ class AssistPaneTest {
                 name = "test", friendlyName = "Test", macAddress = "02:00:00:00:00:01", esphomeVersion = "x",
                 compilationTime = "x", manufacturer = "x", model = "x", voiceFeatures = 0,
             ),
-            publishStates = {}, emit = { events += it }, entitiesChanged = {}, sendEvent = { _, _ -> },
+            publishStates = {}, emit = { events += it }, entitiesChanged = { reconnects++ }, sendEvent = { _, _ -> },
         ),
         player = object : UrlPlayer {
             override fun play(urls: List<String>, onDone: (Boolean) -> Unit) {}
@@ -59,6 +59,7 @@ class AssistPaneTest {
         createInput = { cfg, model, onModel -> created = Triple(cfg, model, onModel); input },
     )
 
+    private var reconnects = 0
     private val panes = ArrayList<AssistPane>()
     private fun started() = pane().also { panes += it; it.start() }
 
@@ -68,6 +69,84 @@ class AssistPaneTest {
     }
 
     @After fun tearDown() = panes.forEach { it.stop() }
+
+    // ---- the settings page (#212)
+
+    @Test
+    fun aWakeWordPickedOnThePanelMakesHomeAssistantReadTheConfigAgain() {
+        prefs.wakeWord = "hey_jarvis"
+        val p = pane()
+        p.useWakeWord("okay_nabu")
+        assertEquals("okay_nabu", prefs.wakeWord)
+        assertEquals("Home Assistant reconnects, so it sets the satellite up and reads the wake words", 1, reconnects)
+        p.useWakeWord("okay_nabu")
+        assertEquals("the same word: nothing to read again", 1, reconnects)
+    }
+
+    /**
+     * Home Assistant's wake word select, index 0, as esphome/select.py async_satellite_config_updated
+     * updates it from a configuration read (HA core dev, read 2026-11-14): it keeps its own pick unless
+     * that reads no_wake_word, and a pick that isn't active becomes no_wake_word.
+     */
+    private class HaWakeWordSelect(var option: String?) {
+        fun configUpdated(cfg: sh.edm.esphome.VoiceConfiguration) {
+            val words = cfg.available.associate { it.wakeWord to it.id }
+            var o = option
+            if (cfg.active.size == 1 && (o == null || o == NONE)) o = words.entries.firstOrNull { it.value == cfg.active[0] }?.key
+            if (o == null || words[o] == null || words[o] !in cfg.active) o = NONE
+            option = o
+        }
+
+        companion object { const val NONE = "no_wake_word" }
+    }
+
+    @Test
+    fun homeAssistantsSelectShowsAWakeWordPickedOnThePanel() {
+        // The root's panel run on 6ca175e: after one reconnect HA's select read no_wake_word, not Okay Nabu.
+        prefs.wakeWord = "hey_jarvis"
+        val p = started()
+        p.rereadDelayMs = 0
+        val server = sh.edm.esphome.ApiServer(0, { identity }, emptyList(), psk = null)
+        p.bind(server)
+        p.onEvent(PanelEvent.SettingChanged(VoicePrefs.KEY_WAKE_WORD)) // the shell's event for the stored word
+        val ha = HaWakeWordSelect(null)
+        ha.configUpdated(server.voice!!.configuration())
+        assertEquals("Hey Jarvis", ha.option)
+
+        val before = reconnects
+        p.useWakeWord("okay_nabu")
+        p.onEvent(PanelEvent.SettingChanged(VoicePrefs.KEY_WAKE_WORD))
+        // Each reconnect the pane asks for is one configuration read by Home Assistant.
+        var handled = before
+        val until = System.currentTimeMillis() + 3_000
+        while (System.currentTimeMillis() < until) {
+            if (reconnects > handled) { handled++; ha.configUpdated(server.voice!!.configuration()) } else Thread.sleep(20)
+            if (handled - before >= 2) break
+        }
+        Thread.sleep(100)
+        assertEquals("two reads: the first clears HA's old pick, the second takes the panel's", 2, reconnects - before)
+        assertEquals("Okay Nabu", ha.option)
+        // Later reads, Home Assistant's own, ask for nothing more.
+        ha.configUpdated(server.voice!!.configuration())
+        Thread.sleep(100)
+        assertEquals(2, reconnects - before)
+    }
+
+    @Test
+    fun thePageSeesTheSatellitesStateAndTheTimers() {
+        val p = started()
+        assertEquals("Idle", p.satellite)
+        p.dispatch(VoiceEvent.Listening)
+        assertEquals("Listening", p.satellite)
+        p.dispatch(VoiceEvent.Speaking)
+        assertEquals("Responding", p.satellite)
+        p.dispatch(VoiceEvent.Idle)
+        assertEquals("Idle", p.satellite)
+        val pasta = dev.glassworks.pane.PanelTimer("1", "Pasta", 900, 360, true)
+        p.onEvent(PanelEvent.TimersChanged(listOf(pasta)))
+        assertEquals(listOf(pasta), p.timers)
+        assertEquals("1 · Pasta, 6 min left", AssistDefinition.timers(p.timers))
+    }
 
     // ---- the speaker
 
@@ -467,8 +546,9 @@ class AssistPaneTest {
         override fun stop() { stops++ }
         override fun setMuted(m: Boolean) { muted += m }
         override fun setGain(g: Float) { gains += g }
-        override fun available() = emptyList<WakeWordInfo>()
-        override fun activeIds() = emptyList<String>()
-        override fun setActive(ids: List<String>) { active += ids }
+        @Volatile var activeNow = emptyList<String>()
+        override fun available() = WakeWords.MICRO.map { WakeWordInfo(it.id, it.phrase) }
+        override fun activeIds() = activeNow
+        override fun setActive(ids: List<String>) { active += ids; activeNow = ids }
     }
 }
