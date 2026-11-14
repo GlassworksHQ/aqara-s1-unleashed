@@ -5,7 +5,6 @@
 package dev.glassworks.camera
 
 import android.app.Application
-import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -15,6 +14,8 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], application = Application::class)
@@ -22,44 +23,17 @@ class CameraPresenceTest {
 
     private val ctx get() = RuntimeEnvironment.getApplication()
 
-    private fun frame(w: Int, h: Int, stride: Int = w, px: (Int, Int) -> Int) =
-        LumaFrame(w, h, stride, ByteArray(stride * h).also { b -> for (y in 0 until h) for (x in 0 until w) b[y * stride + x] = px(x, y).toByte() })
+    /** A 96x54 picture (two pixels a detector cell), [stride] bytes a row with [pad] in the rest. */
+    private fun scene(stride: Int = W, pad: (x: Int) -> Int = { 0 }, px: (x: Int, y: Int) -> Double) =
+        LumaFrame(W, H, stride, ByteArray(stride * H) { i ->
+            val x = i % stride; val y = i / stride
+            (if (x >= W) pad(x) else px(x, y).toInt().coerceIn(0, 255)).toByte()
+        })
 
-    @Test fun squareAveragesTheCentreSquareAndSkipsTheStridePadding() {
-        // 6x4 with 2 bytes of padding a row: the centre square is columns 1..4. Padding is 255 and must not count.
-        val f = LumaFrame(6, 4, 8, ByteArray(32) { i -> if (i % 8 >= 6) 255.toByte() else ((i % 8) * 40).toByte() })
-        val s = f.square(2)
-        // Each output pixel averages a 2x2 cell: columns 1,2 -> (40+80)/2, columns 3,4 -> (120+160)/2.
-        assertArrayEquals(byteArrayOf(60, 140.toByte(), 60, 140.toByte()), s)
-    }
+    private fun flat(v: Double) = scene { _, _ -> v }
 
-    @Test fun squareReadsBytesAsUnsigned() {
-        assertEquals(200, frame(4, 4) { _, _ -> 200 }.square(1)[0].toInt() and 0xff)
-    }
-
-    @Test fun squareFromARealSizedFrameKeepsTheModelSize() {
-        val s = frame(640, 480) { x, _ -> if (x < 320) 0 else 255 }.square(96)
-        assertEquals(96 * 96, s.size)
-        assertEquals(0, s[0].toInt() and 0xff)
-        assertEquals(255, s[95].toInt() and 0xff)
-    }
-
-    @Test fun oneGoodFrameDoesNotMakeSomeoneNear() {
-        val f = PresenceFilter(threshold = 0.6f, enterHits = 2, holdMs = 5_000)
-        assertFalse(f.update(0.9f, 0))
-        assertFalse(f.update(0.1f, 500))
-        assertFalse(f.update(0.9f, 1_000))
-        assertTrue(f.update(0.9f, 1_500))
-    }
-
-    @Test fun nearHoldsThroughShortMissesThenGoesFar() {
-        val f = PresenceFilter(threshold = 0.6f, enterHits = 1, holdMs = 5_000)
-        assertTrue(f.update(0.8f, 0))
-        assertTrue(f.update(0.0f, 4_999))
-        assertTrue(f.update(0.7f, 5_000))
-        assertTrue(f.update(0.0f, 9_999))
-        assertFalse(f.update(0.0f, 10_000))
-    }
+    /** Someone about a sixth of the frame wide and two thirds tall, at [x0] pixels from the left. */
+    private fun person(room: Double, x0: Int) = scene { x, y -> if (x in x0 until x0 + 16 && y in 12 until 48) room + 90 else room }
 
     private class FakeCamera : FrameSource {
         @Volatile var sink: FrameSink? = null
@@ -87,174 +61,152 @@ class CameraPresenceTest {
         }
     }
 
-    private fun presence(cam: FakeCamera, scores: ArrayDeque<Float>, clock: () -> Long, timers: Timers = Timers(), problems: MutableList<String> = mutableListOf()) = CameraPresence(
-        cam, { scores.removeFirst() }, fps = 2f, filter = PresenceFilter(enterHits = 2, holdMs = 1_000), clock = clock, post = { it.run() },
-        after = timers::after, onProblem = { problems += it },
-    )
-
-    private val blank get() = frame(4, 4) { _, _ -> 0 }
-
-    @Test fun framesBecomeReadingsAtTheAskedRateWithTheScoreAsRaw() {
-        val cam = FakeCamera()
-        var now = 0L
-        val scores = ArrayDeque(listOf(0.9f, 0.9f, 0.1f))
-        val readings = mutableListOf<Pair<Boolean, Float>>()
-        val p = presence(cam, scores, { now })
-        p.start(ctx) { near, raw -> readings += near to raw }
-        assertEquals(2f, cam.openedAt)
-        val f = frame(4, 4) { _, _ -> 0 }
-
-        cam.sink!!.frame(f)
-        now = 100; cam.sink!!.frame(f) // too soon after the last: dropped, the detector isn't asked
-        now = 500; cam.sink!!.frame(f)
-        now = 1_000; cam.sink!!.frame(f)
-
-        assertEquals(listOf(false to 0.9f, true to 0.9f, true to 0.1f), readings)
-        assertTrue(scores.isEmpty())
-    }
-
-    @Test fun aLostCameraReportsFarAndStopClosesIt() {
-        val cam = FakeCamera()
-        var now = 0L
-        val readings = mutableListOf<Pair<Boolean, Float>>()
-        val p = presence(cam, ArrayDeque(listOf(0.9f, 0.9f, 0.9f)), { now })
-        p.start(ctx) { near, raw -> readings += near to raw }
-        val f = frame(4, 4) { _, _ -> 0 }
-        cam.sink!!.frame(f); now = 500; cam.sink!!.frame(f)
-        assertEquals(true, readings.last().first)
-
-        cam.sink!!.lost("disconnected")
-        assertEquals(false to -1f, readings.last())
-
-        // A new session starts far: the filter forgot the earlier hits.
-        p.stop(ctx)
-        assertEquals(1, cam.closed)
-        p.start(ctx) { near, raw -> readings += near to raw }
-        now = 2_000; cam.sink!!.frame(f)
-        assertEquals(false to 0.9f, readings.last())
-    }
-
-    @Test fun nothingIsReportedAfterStop() {
-        val cam = FakeCamera()
-        val readings = mutableListOf<Boolean>()
-        val p = presence(cam, ArrayDeque(listOf(0.9f)), { 0L })
-        p.start(ctx) { near, _ -> readings += near }
-        val sink = cam.sink!!
-        p.stop(ctx)
-        sink.frame(frame(4, 4) { _, _ -> 0 })
-        sink.lost("late")
-        assertTrue(readings.isEmpty())
-    }
-
-    @Test fun aReadingQueuedBeforeStopIsDropped() {
-        val cam = FakeCamera()
-        val queued = mutableListOf<Runnable>()
-        val readings = mutableListOf<Boolean>()
-        val p = CameraPresence(cam, { 0.9f }, post = { queued += it }, clock = { 0L }, after = { _, _ -> })
-        p.start(ctx) { near, _ -> readings += near }
-        cam.sink!!.frame(frame(4, 4) { _, _ -> 0 })
-        cam.sink!!.lost("gone")
-        p.stop(ctx)
-        queued.forEach { it.run() }
-        assertTrue(readings.isEmpty())
-    }
-
-    @Test fun aNewSessionStartsFarAfterAStopWhileNear() {
-        val cam = FakeCamera()
-        var now = 0L
-        val readings = mutableListOf<Boolean>()
-        val p = presence(cam, ArrayDeque(listOf(0.9f, 0.9f, 0.9f)), { now })
-        p.start(ctx) { near, _ -> readings += near }
-        cam.sink!!.frame(blank); now = 500; cam.sink!!.frame(blank)
-        assertTrue(readings.last())
-        p.stop(ctx)
-        p.start(ctx) { near, _ -> readings += near }
-        now = 60_000; cam.sink!!.frame(blank)
-        assertFalse("one hit is not enough in a new session", readings.last())
-    }
-
-    @Test fun aStopDuringOpenClosesTheCameraOnceOpenReturns() {
-        val entered = java.util.concurrent.CountDownLatch(1)
-        val release = java.util.concurrent.CountDownLatch(1)
-        var closed = 0
-        val cam = FrameSource { _, _ ->
-            entered.countDown()
-            release.await()
-            AutoCloseable { closed++ }
-        }
-        val p = CameraPresence(cam, { 0f }, post = { it.run() }, after = { _, _ -> })
-        val starter = Thread { p.start(ctx) { _, _ -> } }.apply { start() }
-        assertTrue(entered.await(5, java.util.concurrent.TimeUnit.SECONDS))
-        p.stop(ctx) // the handle isn't back yet
-        release.countDown()
-        starter.join(5_000)
-        assertEquals("the camera opened during stop() is released", 1, closed)
-    }
-
-    @Test fun aLostCameraForgetsTheHitsSoFar() {
-        val cam = FakeCamera()
-        var now = 0L
-        val readings = mutableListOf<Pair<Boolean, Float>>()
-        val problems = mutableListOf<String>()
-        val p = presence(cam, ArrayDeque(listOf(0.9f, 0.9f)), { now }, problems = problems)
-        p.start(ctx) { near, raw -> readings += near to raw }
-        cam.sink!!.frame(blank) // one hit of the two needed
-        cam.sink!!.lost("unplugged")
-        now = 500; cam.sink!!.frame(blank) // a source that keeps going after all
-        assertEquals(listOf(false to 0.9f, false to -1f, false to 0.9f), readings)
-        assertEquals(listOf("the camera stopped: unplugged"), problems)
-    }
-
-    @Test fun aFailingDetectorReadsFarSaysSoOnceAndRecovers() {
-        val cam = FakeCamera()
-        var now = 0L
-        val results = ArrayDeque(listOf<() -> Float>({ error("model gone") }, { error("again") }, { 0.9f }, { 0.9f }))
-        val readings = mutableListOf<Pair<Boolean, Float>>()
-        val problems = mutableListOf<String>()
-        val p = CameraPresence(cam, { results.removeFirst()() }, filter = PresenceFilter(enterHits = 2), clock = { now },
-            post = { it.run() }, after = { _, _ -> }, onProblem = { problems += it })
-        p.start(ctx) { near, raw -> readings += near to raw }
-        for (t in listOf(0L, 500L, 1_000L, 1_500L)) { now = t; cam.sink!!.frame(blank) }
-        assertEquals(listOf(false to -1f, false to -1f, false to 0.9f, true to 0.9f), readings)
-        assertEquals(listOf("the detector failed: IllegalStateException"), problems)
-    }
-
-    @Test fun aSourceThatGoesSilentWhileNearReadsFar() {
+    private class Run(sensitivity: Int = 5) {
         val cam = FakeCamera()
         val timers = Timers()
         val readings = mutableListOf<Pair<Boolean, Float>>()
+        val motion = mutableListOf<Boolean>()
         val problems = mutableListOf<String>()
-        val p = presence(cam, ArrayDeque(listOf(0.9f, 0.9f)), { timers.now }, timers, problems)
-        p.start(ctx) { near, raw -> readings += near to raw }
-        cam.sink!!.frame(blank)
-        timers.now = 500; cam.sink!!.frame(blank)
-        assertEquals(true, readings.last().first)
+        var level = sensitivity
+        val presence = CameraPresence(
+            cam, { level }, clock = { timers.now }, post = { it.run() }, after = timers::after,
+            onProblem = { problems += it }, onMotion = { motion += it },
+        )
+        val near get() = readings.lastOrNull()?.first ?: false
 
-        timers.runDue(CameraPresence.STALE_MS) // 4.5 s since the last frame: not yet
-        assertEquals(true, readings.last().first)
-        timers.runDue(500 + CameraPresence.STALE_MS)
-        assertEquals(false to -1f, readings.last())
-        assertEquals(listOf("no frames for 5 s"), problems)
-        timers.runDue(60_000)
-        assertEquals("said once, not again every period", 1, problems.size)
+        /** One frame every 200 ms, the detector's own rate. */
+        fun feed(frames: List<LumaFrame>) = frames.forEach { f ->
+            timers.now += 200
+            cam.sink!!.frame(f)
+        }
     }
 
-    @Test fun theDefaultsAreTwoFramesASecondTwoHitsAFiveSecondHoldAndFiveSecondsStale() {
-        val cam = FakeCamera()
-        CameraPresence(cam, { 0f }, post = { it.run() }, after = { _, _ -> }).start(ctx) { _, _ -> }
-        assertEquals(2f, cam.openedAt)
-        assertEquals(5_000L, CameraPresence.STALE_MS)
-        val f = PresenceFilter()
-        assertFalse(f.update(0.9f, 0))
-        assertTrue(f.update(0.9f, 500))
-        assertTrue(f.update(0.0f, 5_499))
-        assertFalse(f.update(0.0f, 5_500))
+    private fun started(sensitivity: Int = 5) = Run(sensitivity).also { r -> r.presence.start(ctx) { near, raw -> r.readings += near to raw } }
+
+    // ---------------------------------------------------------------- lighting is not presence
+
+    @Test fun aLampSwitchingOnIsNotSomeone() {
+        val r = started()
+        r.feed(List(5) { flat(40.0) })
+        // Most of the room brightens, unevenly: the lamp is on the left.
+        r.feed(List(20) { scene { x, _ -> if (x < W * 3 / 4) 200.0 else 60.0 } })
+        assertFalse(r.readings.any { it.first })
+        assertTrue(r.motion.isEmpty())
+    }
+
+    @Test fun aGradualDuskIsNotSomeone() {
+        val r = started(sensitivity = 10)
+        // Five minutes of dusk through a window on the right, one frame every 200 ms: the light falls
+        // from 140 to 30, faster near the window.
+        r.feed(List(1_500) { t -> val k = 1.0 - t / 1_500.0; scene { x, _ -> 30 + 110 * k * (0.7 + 0.6 * x / W) } })
+        assertFalse(r.readings.any { it.first })
+    }
+
+    @Test fun aTvCuttingBetweenScenesIsNotSomeone() {
+        val r = started()
+        r.feed(listOf(flat(40.0)))
+        // The TV is off frame; its light falls off across the room and jumps at every cut.
+        val cuts = listOf(40.0, 15.0, 15.0, 95.0, 90.0, 25.0, 40.0, 110.0, 30.0, 40.0, 120.0, 20.0, 60.0, 60.0, 10.0)
+        r.feed(cuts.map { v -> scene { x, _ -> v * (0.6 + 0.8 * x / W) } })
+        assertFalse(r.readings.any { it.first })
+    }
+
+    @Test fun someoneWalkingUpIsSeenEvenRightAfterTheLampWentOn() {
+        val r = started()
+        r.feed(List(3) { flat(40.0) })
+        r.feed(List(8) { flat(90.0) }) // lamp on, then past the detector's 5-frame pause
+        assertFalse(r.near)
+        r.feed((0 until 6).map { person(90.0, 8 + it * 6) })
+        assertTrue(r.near)
+        assertEquals(listOf(true), r.motion)
+        assertTrue("the raw value is the changed share of the picture", r.readings.last().second > 0.05f)
+    }
+
+    @Test fun someoneWhoLeavesIsGoneEightSecondsLater() {
+        val r = started()
+        r.feed(listOf(flat(60.0)))
+        r.feed((0 until 4).map { person(60.0, 10 + it * 8) })
+        assertTrue(r.near)
+        r.feed(List(39) { flat(60.0) }) // 7.8 s after the last change
+        assertTrue(r.near)
+        r.feed(List(2) { flat(60.0) })
+        assertFalse(r.near)
+        assertEquals(listOf(true, false), r.motion)
+    }
+
+    @Test fun oneOddFrameIsNotSomeone() {
+        val r = started()
+        r.feed(listOf(flat(80.0), person(80.0, 30), flat(80.0), flat(80.0)))
+        assertFalse(r.readings.any { it.first })
+    }
+
+    @Test fun sensitivityDecidesWhetherASmallChangeCounts() {
+        // A hand-sized change of 20 levels: below sensitivity 1's threshold, above 10's.
+        fun hand(room: Double, x0: Int) = scene { x, y -> if (x in x0 until x0 + 8 && y in 20 until 30) room + 20 else room }
+        val dull = started(sensitivity = 1)
+        dull.feed(listOf(flat(80.0)) + (0 until 6).map { hand(80.0, 10 + it * 8) })
+        assertFalse(dull.near)
+        val keen = started(sensitivity = 10)
+        keen.feed(listOf(flat(80.0)) + (0 until 6).map { hand(80.0, 10 + it * 8) })
+        assertTrue(keen.near)
+    }
+
+    @Test fun rowPaddingIsNeverReadAsPicture() {
+        val r = started()
+        // 128-byte rows for a 96-pixel picture. After the first frame the last bytes of each row's padding
+        // turn white: read as picture, that would look like something small that appeared.
+        r.feed(List(10) { i -> scene(stride = 128, pad = { x -> if (x >= 124 && i >= 1) 255 else 70 }) { _, _ -> 70.0 } })
+        assertFalse(r.readings.any { it.first })
+    }
+
+    @Test fun anAutoExposureStepIsNotSomeone() {
+        val r = started()
+        // A wall at 80 and a bright window on a tenth of the picture. The camera's exposure steps up by
+        // a fifth, so the window brightens more than the wall: the frame-wide shift is taken out first.
+        fun room(gain: Double) = scene { x, y -> gain * (if (x < 20 && y < 26) 140.0 else 80.0) }
+        r.feed(List(4) { room(1.0) } + List(10) { room(1.2) })
+        assertFalse(r.readings.any { it.first })
+    }
+
+    @Test fun theCameraReExposingAfterTheLampIsNotSomeone() {
+        val r = started()
+        r.feed(List(3) { flat(40.0) })
+        // The lamp comes on, then the camera hunts for two frames, darkening a third of the picture,
+        // before it settles.
+        r.feed(listOf(flat(100.0), scene { x, _ -> if (x < W / 3) 40.0 else 100.0 }, scene { x, _ -> if (x < W / 3) 40.0 else 100.0 }))
+        r.feed(List(10) { flat(100.0) })
+        assertFalse(r.readings.any { it.first })
+    }
+
+    // ---------------------------------------------------------------- the session
+
+    @Test fun framesAreLookedAtFiveTimesASecondAndTheRestDropped() {
+        val r = started()
+        assertEquals(5f, r.cam.openedAt)
+        r.cam.sink!!.frame(flat(50.0))
+        r.timers.now = 100; r.cam.sink!!.frame(flat(50.0)) // too soon: dropped
+        r.timers.now = 200; r.cam.sink!!.frame(flat(50.0))
+        assertEquals(2, r.readings.size)
+    }
+
+    @Test fun aLostCameraReadsFarSaysWhyOnceAndForgetsTheMotion() {
+        val r = started()
+        r.feed(listOf(flat(60.0)) + (0 until 4).map { person(60.0, 10 + it * 8) })
+        assertTrue(r.near)
+        r.cam.sink!!.lost("unplugged")
+        r.cam.sink!!.lost("again")
+        assertEquals(false to -1f, r.readings.last())
+        assertEquals(listOf(true, false), r.motion)
+        assertEquals(listOf("the camera stopped: unplugged"), r.problems)
+        // A source that keeps going after all starts from a fresh background: one frame seeds it.
+        r.feed(listOf(person(60.0, 40)))
+        assertFalse(r.near)
     }
 
     @Test fun aCameraThatWontOpenReadsFarAndSaysWhy() {
         val readings = mutableListOf<Pair<Boolean, Float>>()
         val problems = mutableListOf<String>()
-        val p = CameraPresence({ _, _ -> throw SecurityException("no permission") }, { 0f }, post = { it.run() },
+        val p = CameraPresence({ _, _ -> throw SecurityException("no permission") }, post = { it.run() },
             after = { _, _ -> }, onProblem = { problems += it })
         p.start(ctx) { near, raw -> readings += near to raw }
         assertEquals(listOf(false to -1f), readings)
@@ -262,103 +214,116 @@ class CameraPresenceTest {
     }
 
     @Test fun aSourceThatNeverSendsReadsFarAfterTheStaleTime() {
-        val cam = FakeCamera()
-        val timers = Timers()
-        val readings = mutableListOf<Pair<Boolean, Float>>()
-        val problems = mutableListOf<String>()
-        presence(cam, ArrayDeque(), { timers.now }, timers, problems).start(ctx) { near, raw -> readings += near to raw }
-        timers.runDue(CameraPresence.STALE_MS - 1)
-        assertTrue(readings.isEmpty())
-        timers.runDue(CameraPresence.STALE_MS)
-        assertEquals(listOf(false to -1f), readings)
-        assertEquals(listOf("no frames for 5 s"), problems)
+        val r = started()
+        r.timers.runDue(CameraPresence.STALE_MS - 1)
+        assertTrue(r.readings.isEmpty())
+        r.timers.runDue(CameraPresence.STALE_MS)
+        assertEquals(listOf(false to -1f), r.readings)
+        assertEquals(listOf("no frames for 5 s"), r.problems)
     }
 
-    @Test fun aScoreThatOutlivesTheWatchdogIsDropped() {
-        val cam = FakeCamera()
-        val timers = Timers()
-        val readings = mutableListOf<Pair<Boolean, Float>>()
-        // The detector takes longer than STALE_MS: the watchdog fires while it runs.
-        val scores = ArrayDeque(listOf<() -> Float>({ timers.runDue(CameraPresence.STALE_MS + 1); 0.9f }, { 0f }))
-        val p = CameraPresence(cam, { scores.removeFirst()() }, filter = PresenceFilter(enterHits = 1, holdMs = 60_000),
-            clock = { timers.now }, post = { it.run() }, after = timers::after)
-        p.start(ctx) { near, raw -> readings += near to raw }
-        cam.sink!!.frame(blank)
-        assertEquals("the late hit doesn't bring near back", listOf(false to -1f), readings)
-        timers.now += 500; cam.sink!!.frame(blank)
-        assertEquals("nor does it linger in the filter", false to 0f, readings.last())
+    @Test fun aSourceThatGoesSilentWhileSomeoneIsThereReadsFar() {
+        val r = started()
+        r.feed(listOf(flat(60.0)) + (0 until 4).map { person(60.0, 10 + it * 8) })
+        assertTrue(r.near)
+        val last = r.timers.now
+        r.timers.runDue(last + CameraPresence.STALE_MS - 1)
+        assertTrue(r.near)
+        r.timers.runDue(last + CameraPresence.STALE_MS)
+        assertEquals(false to -1f, r.readings.last())
+        assertEquals(listOf(true, false), r.motion)
+        r.timers.runDue(last + 60_000)
+        assertEquals("said once, not again every period", 1, r.problems.size)
     }
 
-    @Test fun aFailPostedBetweenScoringAndDeliveryStaysTheLastWord() {
-        val cam = FakeCamera()
-        val queue = mutableListOf<Runnable>()
-        var lostFirst = true
-        val readings = mutableListOf<Pair<Boolean, Float>>()
-        val p = CameraPresence(cam, { 0.9f }, filter = PresenceFilter(enterHits = 1), clock = { 0L }, after = { _, _ -> },
-            post = { r ->
-                // The camera is lost after the score passed its check but before its reading is posted.
-                if (lostFirst) { lostFirst = false; cam.sink!!.lost("gone") }
-                queue += r
-            })
-        p.start(ctx) { near, raw -> readings += near to raw }
-        cam.sink!!.frame(blank)
-        queue.forEach { it.run() }
-        assertEquals(listOf(false to -1f), readings)
-    }
-
-    @Test fun anOldSessionsLastFrameAndANewSessionsFirstNeverShareTheDetector() {
-        val cam = FakeCamera()
-        val inside = java.util.concurrent.atomic.AtomicInteger()
-        var most = 0
-        val firstIn = java.util.concurrent.CountDownLatch(1)
-        val release = java.util.concurrent.CountDownLatch(1)
-        var calls = 0
-        val detector = PersonDetector {
-            most = maxOf(most, inside.incrementAndGet())
-            if (++calls == 1) { firstIn.countDown(); release.await() }
-            inside.decrementAndGet()
-            0f
+    @Test fun aStopDuringOpenClosesTheCameraOnceOpenReturns() {
+        val entered = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        var closed = 0
+        val cam = FrameSource { _, _ ->
+            entered.countDown()
+            release.await()
+            AutoCloseable { closed++ }
         }
-        var now = 0L
-        val p = CameraPresence(cam, detector, clock = { now }, post = { it.run() }, after = { _, _ -> })
-        p.start(ctx) { _, _ -> }
-        val oldSink = cam.sink!!
-        val old = Thread { oldSink.frame(blank) }.apply { start() }
-        assertTrue(firstIn.await(5, java.util.concurrent.TimeUnit.SECONDS))
-        p.start(ctx) { _, _ -> } // closes the old session while its frame is in the detector
-        val newSink = cam.sink!!
-        val fresh = Thread { newSink.frame(blank) }.apply { start() }
-        fresh.join(300) // it waits for the old call rather than running beside it
+        val p = CameraPresence(cam, post = { it.run() }, after = { _, _ -> })
+        val starter = Thread { p.start(ctx) { _, _ -> } }.apply { start() }
+        assertTrue(entered.await(5, TimeUnit.SECONDS))
+        p.stop(ctx) // the handle isn't back yet
         release.countDown()
-        old.join(5_000); fresh.join(5_000)
-        assertEquals(2, calls)
-        assertEquals("one frame at a time in the detector", 1, most)
+        starter.join(5_000)
+        assertEquals("the camera opened during stop() is released", 1, closed)
     }
 
-    @Test fun aFrameScoredBeforeAFailureIsDeliveredWinsOverIt() {
+    @Test fun stopClosesTheCameraEndsTheMotionAndANewSessionStartsFresh() {
+        val r = started()
+        r.feed(listOf(flat(60.0)) + (0 until 4).map { person(60.0, 10 + it * 8) })
+        assertTrue(r.near)
+        r.presence.stop(ctx)
+        assertEquals(1, r.cam.closed)
+        assertEquals(listOf(true, false), r.motion)
+        r.presence.start(ctx) { near, raw -> r.readings += near to raw }
+        r.feed(listOf(person(60.0, 50), person(60.0, 58)))
+        assertFalse("the first frame of a session only seeds the background", r.near)
+    }
+
+    @Test fun nothingIsReportedAfterStop() {
+        val r = started()
+        val sink = r.cam.sink!!
+        r.presence.stop(ctx)
+        val before = r.readings.size
+        r.timers.now += 200; sink.frame(flat(10.0))
+        sink.lost("late")
+        r.timers.runDue(60_000)
+        assertEquals(before, r.readings.size)
+        assertTrue(r.problems.isEmpty())
+    }
+
+    @Test fun aReadingQueuedBeforeStopIsDropped() {
         val cam = FakeCamera()
-        val queue = mutableListOf<Runnable>()
-        var scoreFirst = false
-        val readings = mutableListOf<Pair<Boolean, Float>>()
-        val problems = mutableListOf<String>()
-        val p = CameraPresence(cam, { 0.9f }, filter = PresenceFilter(enterHits = 1), clock = { 0L }, after = { _, _ -> },
-            onProblem = { problems += it },
-            post = { r ->
-                // The camera came back: a frame is scored and posted before the failure's reading is.
-                if (scoreFirst) { scoreFirst = false; cam.sink!!.frame(blank) }
-                queue += r
-            })
-        p.start(ctx) { near, raw -> readings += near to raw }
-        scoreFirst = true
+        val queued = mutableListOf<Runnable>()
+        val readings = mutableListOf<Boolean>()
+        val p = CameraPresence(cam, post = { queued += it }, clock = { 0L }, after = { _, _ -> })
+        p.start(ctx) { near, _ -> readings += near }
+        cam.sink!!.frame(flat(50.0))
+        cam.sink!!.lost("gone")
+        p.stop(ctx)
+        queued.forEach { it.run() }
+        assertTrue(readings.isEmpty())
+    }
+
+    @Test fun readingsArriveInTheOrderTheStateChanged() {
+        // Posts are queued under the lock, so a failure and a frame can't swap on the way.
+        val cam = FakeCamera()
+        val queued = mutableListOf<Runnable>()
+        val readings = mutableListOf<Float>()
+        var now = 0L
+        val p = CameraPresence(cam, post = { queued += it }, clock = { now }, after = { _, _ -> })
+        p.start(ctx) { _, raw -> readings += raw }
+        cam.sink!!.frame(flat(50.0))
         cam.sink!!.lost("glitch")
-        queue.forEach { it.run() }
-        assertEquals(listOf(true to 0.9f), readings)
-        assertEquals(listOf("the camera stopped: glitch"), problems)
+        now = 200; cam.sink!!.frame(flat(50.0))
+        queued.forEach { it.run() }
+        assertEquals(listOf(0f, -1f, 0f), readings)
+    }
+
+    @Test fun theDefaults() {
+        assertEquals(5f, CameraPresence.DEFAULT_FPS)
+        assertEquals(8_000L, CameraPresence.HOLD_MS)
+        assertEquals(5, CameraPresence.DEFAULT_SENSITIVITY)
+        assertEquals(5_000L, CameraPresence.STALE_MS)
+        val cam = FakeCamera()
+        CameraPresence(cam, post = { it.run() }, after = { _, _ -> }).start(ctx) { _, _ -> }
+        assertEquals(CameraPresence.DEFAULT_FPS, cam.openedAt)
     }
 
     @Test fun aRangeIsRefusedInWordsAndZeroIsFine() {
-        val p = CameraPresence(FakeCamera(), { 0f }, post = { it.run() }, after = { _, _ -> })
+        val p = CameraPresence(FakeCamera(), post = { it.run() }, after = { _, _ -> })
         assertNull(p.setRange(ctx, 0f))
         assertEquals(CameraPresence.NO_RANGE, p.setRange(ctx, 1.5f))
+    }
+
+    private companion object {
+        const val W = 96
+        const val H = 54
     }
 }

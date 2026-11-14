@@ -1,8 +1,10 @@
 # Camera presence: which detector wakes the screen, at what cost?
 
-**Status (2026-11-13): untested on a device.** Desk research and model analysis for the camera pane
-(#117). The pick is the TFLite Micro person model on the TFLite runtime the app already ships. No
-frame with a camera has run it yet. The S1 has no camera.
+**Status (2026-11-14): decided, not yet run on a device.** Desk research and model analysis for the
+camera pane (#117), then the maintainer's decision: presence comes from **lighting-insensitive motion
+detection**, the `MotionDetectorCore` of the maintainer's android-ip-camera, not from a person model.
+The TFLite person model and its download are dropped. No frame with a camera has run it yet. The S1
+has no camera.
 
 Device: none. The CPU estimates are scaled from the S1's measured TFLite numbers (A133, 4× Cortex-A53).
 Tools: `tflite` 2.18.0 (the flatbuffer schema, Python) to read the models; the script is in
@@ -65,7 +67,8 @@ someone walks up. No frame may leave the panel for that. We need a detector that
      `STATISTICS_INFO_AVAILABLE_FACE_DETECT_MODES` and use it when present.
    - Android's old `android.media.FaceDetector`: in the platform, frontal faces only, needs an
      `RGB_565` bitmap. Not measured.
-   - Frame differencing (motion): cheap, but a curtain, a pet or a TV wakes the screen.
+   - Frame differencing (motion): cheap, but plain differencing lets a lamp, dusk or a TV wake the
+     screen. The maintainer's detector (below) is differencing built to ignore those.
 
 ## Result
 
@@ -85,20 +88,39 @@ person model is about 6 ms a frame in float, and int8 should be faster; BlazeFac
 2 frames a second that is roughly 1% and 5% of one core. Not counted: the camera itself (the HAL, the
 ISP and the YUV buffers), which may cost more than the model. Only a device with a camera can tell.
 
-**Pick: the person model**, fetched at first use from tflite-micro at a pinned commit and checked
-against its SHA-256, as the wake word models are (`ModelFetcher`). Nothing new in the APK. Use the
-camera HAL's face detection as a second signal where it exists. Keep BlazeFace as the fallback if the
-person model misses people at 2 to 3 m.
+**Superseded on 2026-11-14.** The pick above was the person model. The maintainer decided instead
+that presence works like their own tested implementation: `MotionDetectorCore` from
+[aguilaair/android-ip-camera](https://github.com/aguilaair/android-ip-camera) (`onvif-rtsp-motion`,
+`7b5e6f28`, MIT), ported unchanged to `app/kiosk/src/main/java/dev/glassworks/camera/`. The same
+motion feeds the panel's presence and the ONVIF motion events
+([onvif-rtsp.md](onvif-rtsp.md#result)). The table above stays as the record of what was weighed.
 
-The engine for this is in `app/kiosk/src/main/java/dev/glassworks/camera/` (#117):
+How it works (read from the code, 2026-11-14):
 
-- `CameraPresence` is a `PresenceSource`. It takes frames from a `FrameSource` at about 2 a second and
-  drops the rest. A `PersonDetector` scores them, and `PresenceFilter` makes near need two hits in a
-  row and far need 5 s with none. Frames go nowhere else.
-- `LumaFrame.square(96)` makes the model's input from a YUV image's Y plane: the centre square,
-  averaged down, with the row stride honoured.
-- The Camera2 `FrameSource` and the TFLite `PersonDetector` come with the pane, once there is a device
-  to run them on.
+| Step | What it does |
+|---|---|
+| Grid | Each frame becomes 48 × 27 cells, each the mean of 16 luma samples (4 × 4) |
+| Background | A slowly adapting copy, 5% toward each new frame, so dusk fades into it |
+| Brightness shift | The frame-wide mean change is taken out first, so auto-exposure drift isn't a change |
+| Changed cell | Over 34 − 2.6 × sensitivity luma levels after that (about 31 at 1, 8 at 10) |
+| Changed frame | At least 4% ÷ sensitivity of the cells (4% at 1, 0.4% at 10) |
+| Lighting change | Over 50% of cells changed, or the mean jumped over 35%: the background is re-seeded and detection pauses for 5 frames, instead of counting as motion |
+| Start, end | Motion after 2 changed frames in a row; it ends 8 s after the last |
+
+Glassworks runs it at 5 frames a second (its 200 ms sampling) with sensitivity 1 to 10 from the
+`camera_sensitivity` number entity (default 5). `CameraPresenceTest` pins the lighting cases on whole
+frames: a lamp switching on, the camera re-exposing after it, a five-minute dusk, an auto-exposure
+step with a bright window, a TV cutting between scenes, and a person-sized change that is still seen.
+
+**Cost (estimated, not measured):** 20 736 byte reads and about 4 000 arithmetic steps on 1 296 cells
+per frame, so about 0.1 million operations a second at 5 frames a second. Negligible next to the
+camera pipeline. Nothing is downloaded, and the APK grows by the ported classes only.
+
+The engine (#117) in `app/kiosk/src/main/java/dev/glassworks/camera/`:
+
+- `CameraPresence` is a `PresenceSource`. It takes frames from a `FrameSource` at about 5 a second and
+  drops the rest, and gives them to `MotionDetectorCore`. Frames go nowhere else.
+- The Camera2 `FrameSource` comes with the pane, once there is a device to run it on.
 
 ## How to reproduce
 
@@ -122,9 +144,9 @@ The engine for this is in `app/kiosk/src/main/java/dev/glassworks/camera/` (#117
 
 ## Open questions
 
-- The model's real time per frame on the A133 (step 3) and the camera pipeline's CPU on a device with
-  a camera.
-- How far away the person model still sees someone at 96 × 96, in a lit room and at night. A dark
-  room gives a noisy picture, and the panel's own screen may be the only light.
-- Whether a frame should combine the camera with a better sensor (the issue's "frame setting"), or
-  use the camera only when it has nothing else.
+- The camera pipeline's CPU at 5 frames a second on a device with a camera.
+- How the detector behaves in a dark room, where the picture is noisy and the panel's own screen may
+  be the only light. Sensitivity 5 needs about 21 levels of change per cell.
+- A pet or a curtain still counts as motion: the detector doesn't know what moved.
+- Whether a frame should combine the camera with a better sensor (the issue's "frame setting"). The
+  approved design uses the camera only when the frame has no other presence source.

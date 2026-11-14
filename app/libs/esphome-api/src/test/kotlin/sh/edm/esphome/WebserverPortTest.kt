@@ -30,7 +30,8 @@ class WebserverPortTest {
 
     /** Asks the server for its device info over plaintext and returns the response. */
     private fun deviceInfo(id: DeviceIdentity): ProtoMessage {
-        val server = ApiServer(0, { id }, emptyList(), psk = null)
+        // On loopback, where the test connects (#113: a wildcard listener can share a port with another process on macOS).
+        val server = ApiServer(0, { id }, emptyList(), keys = null, bindAddress = java.net.InetAddress.getByName("127.0.0.1"))
         server.start()
         try {
             Socket("127.0.0.1", server.localPort).use { s ->

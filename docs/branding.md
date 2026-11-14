@@ -32,7 +32,7 @@ image follows GitHub's theme.
 | A pane | **Pane badge** (`badge-pane-on-*.svg`) | The pane's README |
 | [Clarity](perf.md), the perf test and grade every frame follows | **Core badge** (`badge-core-on-*.svg`) alone, under the title. No banner | `docs/perf.md`. Its tools in `tools/perf` stay plain, like every dev tool |
 | The installer (`kiln/`, `tools/install.sh`) | **Kiln badge** (`badge-kiln-on-*.svg`) | Kiln's README. The S1 installer is still S1-branded until it moves into Kiln |
-| A frame (`frames/<id>/`) | **Frame banner** (`banner-frame-<id>-on-*.svg`), then the Built on Glassworks, status and roadmap badges | Top of `frames/<id>/README.md`. glassworks.dev draws it from the frame's `frame.json` (see [Adding a frame banner](#adding-a-frame-banner)) |
+| A frame (`frames/<id>/`) | **Frame banner** (`banner-frame-<id>-on-*.svg`), then the Built on Glassworks badge, the Kiln badge if Kiln installs it, and the status, roadmap and Clarity badges | Top of `frames/<id>/README.md`. glassworks.dev draws it from the frame's `frame.json` (see [Adding a frame banner](#adding-a-frame-banner)) |
 
 Device-specific code lives in the frame, so it doesn't get a badge of its own.
 
@@ -78,6 +78,11 @@ has no hue of its own: a frame is hardware, the bottom plate of the stack.
    if a frame's banner isn't the one its `frame.json` gives.
 3. Once that is deployed, put the banner at the top of the frame's README, with the file name
    `banner-frame-<id>`.
+
+The frame's README also carries its Clarity badge, `https://www.glassworks.dev/frames/<id>/clarity-on-dark.svg`
+and `-on-light.svg`. The site draws it at build time from the frame's `design/clarity.json` (none
+yet reads "not measured"), and `tools/check-brand-images.py` doesn't check it: that tool covers
+`/brand/` images only.
 
 ## Colour, in short
 

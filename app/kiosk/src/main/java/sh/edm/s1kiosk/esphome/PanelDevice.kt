@@ -26,6 +26,7 @@ import sh.edm.s1kiosk.KioskPrefs
 import sh.edm.s1kiosk.MainActivity
 import sh.edm.s1kiosk.timers.TimersPane
 import sh.edm.s1kiosk.auth.HaAuth
+import sh.edm.s1kiosk.auth.OAuth
 import sh.edm.s1kiosk.radio.RadioPane
 import sh.edm.s1kiosk.dashboard.Dashboard
 import sh.edm.s1kiosk.dashboard.DashboardOptions
@@ -91,8 +92,10 @@ class PanelDevice internal constructor(
     )
 
     companion object {
-        // Keep the library's logs under the tag the docs use (`adb logcat -s S1ESPHome`).
-        init { EspHomeLog.tag = "S1ESPHome" }
+        /** The library's logs go under the tag the docs use (`adb logcat -s S1ESPHome`). */
+        const val ESPHOME_LOG_TAG = "S1ESPHome"
+
+        init { EspHomeLog.tag = ESPHOME_LOG_TAG }
 
         /**
          * The ESPHome node name. Home Assistant's config entry keeps it (`device_name`), the mDNS service
@@ -216,6 +219,8 @@ class PanelDevice internal constructor(
             manufacturer = "Aqara",
             model = "Panel Hub S1 Plus (S1 Kiosk)",
             voiceFeatures = voiceFeatures(),
+            // Home Assistant's "Visit" link on the device page opens the Manage page (#33).
+            webserverPort = OAuth.SIGNIN_PORT,
         )
         EspHomeLog.i("ESPHome device '${id.name}' mac ${id.macAddress}, voice=${id.voiceFeatures != 0}")
         if (!unlessStopped { initEntities(id); acquireLocks() }) return
@@ -453,6 +458,9 @@ class PanelDevice internal constructor(
 
     /** The chime player, made on first use (from the ESPHome, voice or main thread). */
     private fun chimes(): TtsPlayer = synchronized(this) { chimePlayer ?: TtsPlayer().also { chimePlayer = it } }
+
+    /** Home Assistant is connected and listening to the panel's states now. */
+    fun homeAssistantConnected(): Boolean = server?.hasSubscriber == true
 
     /** The user cancelled the current voice run (tap on the overlay). */
     fun cancelVoice() {

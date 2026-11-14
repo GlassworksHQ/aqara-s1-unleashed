@@ -129,6 +129,8 @@ class SignInServerTest {
         assertEquals(200, cb)
         assertTrue(body.contains("Panel signed in"))
         assertTrue(body.contains("#0a0b0f"))
+        // The way on from the QR flow to the Manage page (#33).
+        assertTrue(body.contains("""<a href="/">Manage this panel</a>"""))
         val (auth, ok) = signedIn!!
         assertEquals("RT", auth.refreshToken)
         assertEquals("http://$panel/", auth.clientId)
@@ -360,10 +362,14 @@ class SignInServerTest {
         assertTrue(html.contains("<svg")) // the mark is inline
         assertTrue(html.contains("Glassworks Panel"))
         for (external in listOf("<script", "<link", "src=", "@import", "url(http")) assertTrue(external, !html.contains(external))
-        // ... and the browser enforces it: only the page's own inline style, no sniffing, no referrer.
-        assertEquals("default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'", r.headers["Content-Security-Policy"])
-        assertEquals("nosniff", r.headers["X-Content-Type-Options"])
-        assertEquals("no-referrer", r.headers["Referrer-Policy"])
+        // ... and the browser enforces it, through the shell every page shares: only the page's own inline
+        // style, no forms (the QR pages have none), no framing, no sniffing, no referrer to other sites.
+        val shell = dev.glassworks.web.PageShell.securityHeaders(formAction = "'none'")
+        assertEquals("default-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; frame-ancestors 'none'; form-action 'none'",
+            r.headers["Content-Security-Policy"])
+        for ((h, v) in shell) assertEquals(h, v, r.headers[h])
+        // same-origin, not no-referrer: with no-referrer Chromium sends "Origin: null" on the Manage page's own forms.
+        assertEquals("same-origin", r.headers["Referrer-Policy"])
         // The same on a page that answers: the landing.
         val landing = server.handle(SignInServer.Request("GET", "/", emptyMap(), emptyMap()))
         assertEquals(200, landing.status)

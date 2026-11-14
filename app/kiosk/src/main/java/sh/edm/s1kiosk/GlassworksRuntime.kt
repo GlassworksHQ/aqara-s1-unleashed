@@ -8,11 +8,13 @@ import dev.glassworks.engine.Engine
 import dev.glassworks.engine.EngineSettings
 import dev.glassworks.engine.gecko.GeckoEngine
 import dev.glassworks.frame.Frame
+import dev.glassworks.manage.PanelCode
 import dev.glassworks.pane.Pane
 import dev.glassworks.pane.PaneDefinition
 import dev.glassworks.pane.SetupStep
 import dev.glassworks.screen.ScreenPolicy
 import sh.edm.s1kiosk.discovery.HaDiscovery
+import sh.edm.s1kiosk.esphome.PanelDevice
 import sh.edm.s1kiosk.frame.AqaraS1Plus
 import sh.edm.s1kiosk.radio.RadioController
 import sh.edm.s1kiosk.radio.RadioDefinition
@@ -122,6 +124,12 @@ class GlassworksRuntime(
 
     /** The running update manager, for UpdateInstallReceiver. */
     @Volatile var updates: UpdateManager? = null
+
+    /** Set while KioskService runs: the ESPHome device, for the Manage page's status. */
+    @Volatile var device: PanelDevice? = null
+
+    /** The code the panel shows for the Manage page (sign-in without HA, dangerous actions). KioskService draws it. */
+    val panelCode = PanelCode()
 
     /** Last voice assistant state, exposed to the page via MainActivity.stateJson(). */
     @Volatile var voiceState: String = "off"

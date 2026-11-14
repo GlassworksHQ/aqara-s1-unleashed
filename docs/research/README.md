@@ -223,10 +223,10 @@ This page is the index of every note. Notes about one device live with its frame
 | [TEMPLATE.md](TEMPLATE.md) | Start a new note from this |
 | [microwakeword.md](microwakeword.md) | Replacing openWakeWord with microWakeWord: the Kotlin port of TFLite Micro's audio frontend, the models, test speech, and what is left for the panel |
 | [ha-esphome-actions-events.md](ha-esphome-actions-events.md) | What a notification can carry over ESPHome each way: why `notify` takes one JSON `data` argument, and why a tapped button goes to HA as a bus event, not an event entity (#118) |
-| [camera-presence.md](camera-presence.md) | Which detector wakes the screen from a camera: ML Kit ruled out, the TFLite Micro person model picked, and its CPU estimated from the S1's TFLite numbers (#117) |
-| [onvif-rtsp.md](onvif-rtsp.md) | What HA's ONVIF integration and UniFi Protect need from a camera, and which RTSP and ONVIF libraries we could build on (#117) |
+| [camera-presence.md](camera-presence.md) | Which detector wakes the screen from a camera: ML Kit and a person model weighed, then the maintainer's lighting-insensitive motion detector chosen (#117) |
+| [onvif-rtsp.md](onvif-rtsp.md) | What HA's ONVIF integration and UniFi Protect need from a camera, the libraries weighed, and the maintainer's tested RTSP and ONVIF server that Glassworks ports (#117) |
 
-### Aqara S1 Plus ([`frames/aqara-s1-plus/research/`](../../frames/aqara-s1-plus/research/))
+### Aqara S1 Plus ([`frames/aqara-s1-plus/`](../../frames/aqara-s1-plus/README.md#research-notes))
 
 | File | What's in it |
 |---|---|
@@ -247,14 +247,14 @@ This page is the index of every note. Notes about one device live with its frame
 | [idle-cpu.md](../../frames/aqara-s1-plus/research/idle-cpu.md) | Why the kiosk uses ~40% of a core at idle: the wake word's embedding model, per-thread numbers, and the options (#105) |
 | [bluetooth.md](../../frames/aqara-s1-plus/research/bluetooth.md) | The panel's Bluetooth (RTL8821CS, shared with Wi-Fi), Android 10's scan rules from AOSP, and what HA needs from an ESPHome Bluetooth proxy (#121) |
 
-### lululemon Studio Mirror ([`frames/lululemon-mirror/research/`](../../frames/lululemon-mirror/research/))
+### lululemon Studio Mirror ([`frames/lululemon-mirror/`](../../frames/lululemon-mirror/README.md#research-notes))
 
 | File | What's in it |
 |---|---|
 | [mirror-android.md](../../frames/lululemon-mirror/research/mirror-android.md) | Can the lululemon Mirror run Android 8+ for the current GeckoView? The signed boot image blocks it; the kexec idea, the paths, blobs and read-only probes (desk research, #39) |
 | [mirror-abis.md](../../frames/lululemon-mirror/research/mirror-abis.md) | Which ABIs the Mirror's userspace runs: 64-bit in the community image, stock untested (#98) |
 
-### Generic Android (`frames/generic-android/`)
+### Generic Android ([`frames/generic-android/`](../../frames/generic-android/README.md))
 
 No notes yet.
 

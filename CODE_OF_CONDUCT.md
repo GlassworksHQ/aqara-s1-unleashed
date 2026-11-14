@@ -7,8 +7,9 @@ It applies in issues, pull requests, Discussions and any other place the project
 
 To report behaviour that breaks it, contact the maintainers privately: open a
 [private report](https://github.com/GlassworksHQ/glassworks/security/advisories/new) and start the
-title with "Code of conduct". You can also use GitHub's **Report content** on the comment, but pick
-**Report to repository admins**: the other choice goes to GitHub Support, not to the maintainers.
+title with "Code of conduct", or email [hi@glassworks.dev](mailto:hi@glassworks.dev). You can also
+use GitHub's **Report content** on the comment, but pick **Report to repository admins**: the other
+choice goes to GitHub Support, not to the maintainers.
 Don't report it in public. The maintainers look at every report sent to them and keep the
 reporter's identity private.
 

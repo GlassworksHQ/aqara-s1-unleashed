@@ -212,6 +212,9 @@ class ApiServer(
     @Volatile private var entities: List<ApiEntity> = entities.toList()
     @Volatile private var byKey: Map<Int, ApiEntity> = entities.associateBy { it.key }
     private val connections = CopyOnWriteArrayList<Connection>()
+
+    /** A client has subscribed to the states now (Home Assistant, once it has added the device). */
+    val hasSubscriber: Boolean get() = connections.any { it.subscribedStates }
     private val ids = AtomicInteger()
     private var serverSocket: ServerSocket? = null
     @Volatile private var running = false

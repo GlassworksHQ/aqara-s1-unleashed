@@ -190,6 +190,16 @@ class PanelDevicePaneSwitchesTest {
         }
     }
 
+    /**
+     * #33: Home Assistant builds the device page's "Visit" link from `webserver_port` (field 10). The
+     * panel's device info carries the Manage page's port, with every pane switch on or off.
+     */
+    @Test fun theDeviceInfoGivesHomeAssistantTheManagePagesPort() {
+        Client(port).use { assertEquals(8099, it.deviceInfo().uint32(10)) }
+        set("assist", true)
+        Client(port).use { assertEquals(8099, it.deviceInfo().uint32(10)) }
+    }
+
     /** A plaintext ESPHome API client, as Home Assistant connects. */
     private class Client(port: Int) : AutoCloseable {
         private val s = Socket(InetAddress.getLoopbackAddress(), port).apply { soTimeout = 5_000 }
@@ -197,10 +207,12 @@ class PanelDevicePaneSwitchesTest {
 
         init { send(Msg.HELLO_REQUEST, ProtoWriter().string(1, "Home Assistant 2026.11.0").uint32(2, 1).uint32(3, 10).toByteArray()) }
 
-        fun voiceFeatures(): Int {
+        fun deviceInfo(): ProtoMessage {
             send(Msg.DEVICE_INFO_REQUEST, ByteArray(0))
-            return ProtoMessage(read(Msg.DEVICE_INFO_RESPONSE)).uint32(17)
+            return ProtoMessage(read(Msg.DEVICE_INFO_RESPONSE))
         }
+
+        fun voiceFeatures(): Int = deviceInfo().uint32(17)
 
         fun awaitDisconnectRequest() { read(Msg.DISCONNECT_REQUEST) }
 
