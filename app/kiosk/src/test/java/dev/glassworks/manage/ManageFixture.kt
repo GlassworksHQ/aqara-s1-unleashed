@@ -116,7 +116,15 @@ class ManageFixture(
 
     // ------------------------------------------------------------------ a browser
 
-    inner class Browser(val host: String = "192.0.2.40:8099", val remote: String = "192.0.2.77", val ua: String = "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15") {
+    inner class Browser(
+        val host: String = "192.0.2.40:8099", val remote: String = "192.0.2.77",
+        val ua: String = "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15",
+        /**
+         * Sends `Sec-Fetch-Site` (`none`, a typed address, unless a test gives another). Browsers send it only to
+         * https and loopback: false plays the panel's http:// address on the LAN.
+         */
+        val fetchMetadata: Boolean = true,
+    ) {
         val cookies = LinkedHashMap<String, String>()
 
         fun get(path: String, headers: Map<String, String> = emptyMap()): HttpResponse = send("GET", path, emptyMap(), headers)
@@ -133,6 +141,7 @@ class ManageFixture(
             h["user-agent"] = ua
             if (cookies.isNotEmpty()) h["cookie"] = cookies.entries.joinToString("; ") { (k, v) -> "$k=$v" }
             if (method == "POST") h["content-type"] = "application/x-www-form-urlencoded"
+            if (fetchMetadata && method != "POST") h["sec-fetch-site"] = "none" // posts carry Origin, which the tests set
             h.putAll(headers)
             val r = server.handle(HttpRequest(method, path, query, h, body.toByteArray(), remote))
             r.headers["Set-Cookie"]?.split('\n')?.forEach { c ->

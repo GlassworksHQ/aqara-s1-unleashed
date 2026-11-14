@@ -17,6 +17,7 @@ import java.net.SocketTimeoutException
 import java.net.URI
 import java.net.URLDecoder
 import java.util.concurrent.ArrayBlockingQueue
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
@@ -91,6 +92,8 @@ class HttpServer(
         Thread(r, "glassworks-http").apply { isDaemon = true }
     }
     private val ids = AtomicInteger()
+    /** Every connection accepted and not yet closed, also those still waiting for a worker, so [stop] can close them. */
+    private val open: MutableSet<Socket> = ConcurrentHashMap.newKeySet()
 
     val localPort: Int get() = serverSocket?.localPort ?: -1
 
@@ -104,6 +107,7 @@ class HttpServer(
         Thread({
             while (running) {
                 val s = try { ss.accept() } catch (e: IOException) { if (running) log("accept failed: ${e.message}"); break }
+                open += s
                 try {
                     pool.execute { serve(s) }
                 } catch (_: RejectedExecutionException) {
@@ -118,11 +122,18 @@ class HttpServer(
         running = false
         try { serverSocket?.close() } catch (_: IOException) {}
         serverSocket = null
+        // Tasks still in the queue never run: close their connections here, and the running ones' too.
         pool.shutdownNow()
+        for (s in open) try { s.close() } catch (_: IOException) {}
+        open.clear()
     }
 
     private fun serve(s: Socket) {
         val id = ids.incrementAndGet()
+        try { serveOn(s, id) } finally { open -= s }
+    }
+
+    private fun serveOn(s: Socket, id: Int) {
         s.use { sock ->
             try {
                 val input = BufferedInputStream(DeadlineInput(sock, System.nanoTime() + requestDeadlineMs * 1_000_000))
@@ -158,6 +169,7 @@ class HttpServer(
 
     /** Every worker is busy and the queue is full: say so and close, without reading the request. */
     private fun busy(s: Socket) {
+        open -= s
         s.use { sock ->
             try {
                 sock.soTimeout = 200

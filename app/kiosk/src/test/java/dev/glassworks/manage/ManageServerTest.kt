@@ -461,4 +461,39 @@ class ManageServerTest {
         assertFalse("the other browser's session ended too", two.get("/").text().contains("Reload dashboard"))
         assertTrue(f.sessions.list(home).isEmpty())
     }
+
+    @Test fun haVisitOverPlainHttpReloadsOnceAndLandsSignedIn() {
+        // On the LAN's http:// address the browser sends no Sec-Fetch-Site at all.
+        val b = f.Browser(fetchMetadata = false)
+        b.signInWithHa()
+        val cookie = b.cookies.remove(ManageServer.SESSION)!!
+        val r = b.get("/log?level=warning")
+        val to = Regex("url=([^\"]+)\"").find(r.text())!!.groupValues[1].replace("&amp;", "&")
+        assertTrue(to, to.startsWith("/log?") && "level=warning" in to && "${ManageServer.RELOADED}=1" in to)
+        b.cookies[ManageServer.SESSION] = cookie // the reload from the panel's own page is same-site: the cookie comes
+        val back = b.get(to)
+        assertEquals(303, back.status)
+        assertEquals("/log?level=warning", back.headers["Location"])
+    }
+
+    @Test fun theReloadHappensOnceThenItsTheSignInPage() {
+        val b = f.Browser(fetchMetadata = false)
+        val first = b.get("/log")
+        assertTrue(first.text().contains("http-equiv=\"refresh\""))
+        val again = b.get("/log?${ManageServer.RELOADED}=1")
+        assertFalse("no second reload", again.text().contains("http-equiv=\"refresh\""))
+        assertTrue(again.text().contains("Manage this panel"))
+        assertTrue("next has no mark", again.text().contains("name=\"next\" value=\"/log\""))
+    }
+
+    @Test fun aTextSettingShowsItsValueAsThePanelDoes() {
+        f.status = f.status.copy(sections = f.status.sections + dev.glassworks.pane.SettingsSection("screen2", "Screen", listOf(
+            dev.glassworks.pane.SettingsItem.Text("Screen off after", "Never", dev.glassworks.pane.SettingsItem.TextKind.NUMBER, { "120" },
+                shown = { "After ${it.toInt() / 60} minutes" }) { _, d -> d(null) },
+        )))
+        val b = f.Browser()
+        b.signInWithHa()
+        val page = b.get("/screen2").text()
+        assertTrue(page, page.contains("After 2 minutes"))
+    }
 }

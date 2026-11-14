@@ -58,6 +58,8 @@ class ManageServer(
         if (req.method != "GET" && req.method != "HEAD" && req.method != "POST") return HttpResponse.text(405, "Not allowed.")
         if (req.method == "POST" && !sameOrigin(req)) return HttpResponse.text(403, "This form didn't come from the panel's own page.")
         val session = sessions.lookup(req.cookies[SESSION], haBase())
+        // Back from the reload in signedOut() with the cookie: the same page, without the mark.
+        if (session != null && req.method == "GET" && req.query[RELOADED] != null) return HttpResponse.seeOther(withoutMark(req))
         return when (req.path) {
             "/favicon.ico" -> HttpResponse.text(404, "")
             "/manage/ha" -> post(req) { startHa(req) }
@@ -82,9 +84,16 @@ class ManageServer(
 
     private fun signedOut(req: HttpRequest): HttpResponse {
         if (req.method == "POST") return HttpResponse.seeOther("/")
-        // Arrived from another site (HA's "Visit"): the SameSite=Strict cookie stayed behind. Reload from here.
-        if (req.headers["sec-fetch-site"] == "cross-site") return html(200, pages.bounce(name()))
-        return signInPage(req, safeNext(req.target), null)
+        // Arrived from another site (HA's "Visit"): the SameSite=Strict cookie stayed behind. Load the page again
+        // from here, which is same-site, so the cookie comes. Browsers send Sec-Fetch-Site only to https and
+        // loopback, never to the panel's http:// address on the LAN, so no header counts too, when no cookie came
+        // at all. The mark keeps it to one reload: back without a session, it's the sign-in page.
+        val site = req.headers["sec-fetch-site"]
+        if (req.query[RELOADED] == null && req.cookies[SESSION] == null && (site == "cross-site" || site == null)) {
+            val to = withoutMark(req)
+            return html(200, pages.bounce(name(), to + (if ('?' in to) "&" else "?") + "$RELOADED=1"))
+        }
+        return signInPage(req, safeNext(withoutMark(req)), null)
     }
 
     private fun signInPage(req: HttpRequest, next: String, problem: String?, status: Int = 200): HttpResponse {
@@ -362,6 +371,15 @@ class ManageServer(
 
     companion object {
         const val SESSION = "gw_session"
+
+        /** The query mark of the one reload a signed-out page from another site gets ([signedOut]). */
+        const val RELOADED = "gw_reload"
+
+        /** [req]'s path and query without the [RELOADED] mark. */
+        fun withoutMark(req: HttpRequest): String {
+            val q = req.query.filterKeys { it != RELOADED }
+            return if (q.isEmpty()) req.path else req.path + "?" + q.entries.joinToString("&") { (k, v) -> dev.glassworks.web.HttpServer.enc(k) + "=" + dev.glassworks.web.HttpServer.enc(v) }
+        }
         const val PRE = "gw_pre"
         const val PURPOSE_SIGN_IN = "signin"
         const val PURPOSE_REBOOT = "reboot"

@@ -62,9 +62,9 @@ ${if (problem != null) """<p class="err">${esc(problem)}</p>""" else ""}
         return PageShell.document(name, MANAGE_CSS + DIALOG_CSS, body)
     }
 
-    /** A page that only reloads itself, so a link from another site (HA's "Visit") arrives with the SameSite=Strict cookie. */
-    fun bounce(name: String): String =
-        PageShell.document(name, "", """<meta http-equiv="refresh" content="0"><noscript></noscript>""")
+    /** A page that only loads [to] from here, so a link from another site (HA's "Visit") arrives with the SameSite=Strict cookie. */
+    fun bounce(name: String, to: String): String =
+        PageShell.document(name, "", """<meta http-equiv="refresh" content="0;url=${esc(to)}"><noscript></noscript>""")
 
     // ------------------------------------------------------------------ the signed-in frame
 
@@ -157,7 +157,11 @@ ${if (problem != null) """<p class="err">${esc(problem)}</p>""" else ""}
 
     private fun items(items: List<SettingsItem>): String = items.joinToString("") { item ->
         when (item) {
-            is SettingsItem.Text -> row(item.title, item.hint.takeIf { it.isNotEmpty() && it != safe { item.value() } }, safe { item.value() }.ifEmpty { "Not set" })
+            is SettingsItem.Text -> {
+                val v = safe { item.value() }
+                // As the panel's row shows it ("After 2 minutes" for 120); the hint names an empty one.
+                row(item.title, item.hint.takeIf { it.isNotEmpty() && it != v }, if (v.isEmpty()) "Not set" else safe { item.shown(v) }.ifEmpty { v })
+            }
             is SettingsItem.Switch -> row(item.title, item.detail.ifEmpty { null }, if (safe { item.value() } == "true") "On" else "Off")
             is SettingsItem.Slider -> row(item.title, null, safe { item.shown(item.value()) })
             is SettingsItem.Duration -> row(item.title, null, safe { item.shown(item.value()) })

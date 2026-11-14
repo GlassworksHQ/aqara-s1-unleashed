@@ -95,12 +95,35 @@ class HttpServerTest {
             val answer = next.getInputStream().readBytes().toString(Charsets.UTF_8)
             val tookMs = (System.nanoTime() - startNs) / 1_000_000
             assertTrue(answer, answer.startsWith("HTTP/1.1 503"))
-            assertTrue("answered in $tookMs ms, while the trickler still trickles", tookMs < 1_500 && t.isAlive)
+            // Only the time counts: the refused trickler's sender may already have stopped on its closed socket.
+            assertTrue("answered in $tookMs ms", tookMs < 1_500)
+            t.interrupt()
             release.countDown()
             listOf(busy, waiting, next).forEach { it.close() }
         } finally {
             release.countDown()
             trickler?.close()
+            server.stop()
+        }
+    }
+
+    @Test fun stopClosesConnectionsStillWaitingForAWorker() {
+        val release = CountDownLatch(1)
+        val started = CountDownLatch(1)
+        val server = HttpServer(0, { started.countDown(); release.await(10, TimeUnit.SECONDS); HttpResponse.text(200, "ok") },
+            bindAddress = loopback, workers = 1, queued = 4)
+        server.start()
+        try {
+            val busy = open(server.localPort)
+            assertTrue(started.await(3, TimeUnit.SECONDS))
+            val waiting = Socket(loopback, server.localPort).apply { soTimeout = 3_000 }
+            Thread.sleep(200) // accepted and queued behind the busy one
+            server.stop()
+            val gone = try { waiting.getInputStream().read() == -1 } catch (_: java.net.SocketTimeoutException) { false } catch (_: java.io.IOException) { true }
+            assertTrue("the queued connection was closed, not left waiting", gone)
+            busy.close(); waiting.close()
+        } finally {
+            release.countDown()
             server.stop()
         }
     }
