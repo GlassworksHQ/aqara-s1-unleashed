@@ -153,6 +153,36 @@ class AssistPaneTest {
     }
 
     @Test
+    fun aLateReadDoesNotClearANewerPick() {
+        // CodeRabbit on #249: an expired read could pass its check, then clear the count a newer pick had just set.
+        prefs.wakeWord = "hey_jarvis"
+        val p = started()
+        p.rereadDelayMs = 0
+        var now = 1_000L
+        var interleave = false
+        val picker = arrayOfNulls<Thread>(1)
+        p.clock = {
+            if (interleave) {
+                // Inside the late read: a new pick comes from another thread, as from the settings page.
+                interleave = false
+                picker[0] = Thread { p.useWakeWord("alexa") }.apply { start(); join(200) }
+            }
+            now
+        }
+        val server = sh.edm.esphome.ApiServer(0, { identity }, emptyList(), psk = null)
+        p.bind(server)
+        p.useWakeWord("okay_nabu")
+        now += AssistPane.REREAD_WINDOW_MS + 1
+        interleave = true
+        server.voice!!.configuration() // late: past the first pick's window
+        picker[0]!!.join(2_000)
+        val before = reconnects
+        server.voice!!.configuration() // the newer pick's first read
+        Thread.sleep(100)
+        assertEquals("the newer pick still gets its second reconnect", 1, reconnects - before)
+    }
+
+    @Test
     fun thePageSeesTheSatellitesStateAndTheTimers() {
         val p = started()
         assertEquals("Idle", p.satellite)

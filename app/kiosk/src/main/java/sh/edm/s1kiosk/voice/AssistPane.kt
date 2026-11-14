@@ -20,7 +20,6 @@ import sh.edm.s1kiosk.esphome.WakeWordCatalog
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicInteger
 
 /** The microphone and wake word side of the assistant. [VoiceEngine] is the real one. */
 interface VoiceInput : WakeWordCatalog {
@@ -127,19 +126,24 @@ class AssistPane(
     fun useWakeWord(id: String) {
         if (id == prefs.wakeWord) return
         prefs.wakeWord = id
-        rereadUntil = clock() + REREAD_WINDOW_MS
-        rereads.set(2)
+        synchronized(rereadLock) {
+            rereadUntil = clock() + REREAD_WINDOW_MS
+            rereads = 2
+        }
         ctx.entitiesChanged()
     }
+
+    /** Guards [rereads] and [rereadUntil] together: a late read must not clear a newer pick's count (CodeRabbit on #249). */
+    private val rereadLock = Any()
 
     /**
      * Configuration reads by Home Assistant still to count after a word picked on the panel ([useWakeWord]):
      * any read, the first one after the pick included, whatever started it.
      */
-    private val rereads = AtomicInteger(0)
+    private var rereads = 0
 
     /** Until when ([clock]) a read still counts toward the second reconnect. */
-    @Volatile private var rereadUntil = 0L
+    private var rereadUntil = 0L
 
     /** `SystemClock.elapsedRealtime`; a test moves it. */
     internal var clock: () -> Long = { android.os.SystemClock.elapsedRealtime() }
@@ -153,8 +157,14 @@ class AssistPane(
 
     /** After a read: the first of two, within the window, asks for the second ([useWakeWord]). Any thread. */
     private fun configurationRead() {
-        if (rereads.get() > 0 && clock() > rereadUntil) { rereads.set(0); return }
-        if (rereads.get() > 0 && rereads.decrementAndGet() == 1) {
+        val again = synchronized(rereadLock) {
+            when {
+                rereads == 0 -> false
+                clock() > rereadUntil -> { rereads = 0; false }
+                else -> --rereads == 1
+            }
+        }
+        if (again) {
             val w = watchdog
             if (w == null) ctx.entitiesChanged()
             else runCatching { w.schedule({ ctx.entitiesChanged() }, rereadDelayMs, TimeUnit.MILLISECONDS) }.onFailure { ctx.entitiesChanged() }
