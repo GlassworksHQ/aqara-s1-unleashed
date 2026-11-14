@@ -290,14 +290,21 @@ class OnvifServer(
 
         if (action !in UNAUTHENTICATED) {
             val auth = checkAuth(header, method, rawPath, headers)
-            if (auth != AuthResult.OK) refused(who, action, auth)
+            if (auth == AuthResult.BAD || auth == AuthResult.MISSING) refused(who, action, auth)
             when (auth) {
                 AuthResult.OK -> {}
                 AuthResult.MISSING -> return unauthorized(
                     "application/soap+xml; charset=utf-8",
                     OnvifXml.fault("ter:NotAuthorized", "Sender not authorized").toByteArray()
                 )
+                // A wrong sign-in gets a final SOAP fault (env:Sender, ter:NotAuthorized) and no new challenge, so
+                // nothing invites a retry. Only a Digest nonce we no longer know gets one, marked stale.
                 AuthResult.BAD -> return soapFault("ter:NotAuthorized", "Sender not authorized", 400)
+                AuthResult.STALE -> return unauthorized(
+                    "application/soap+xml; charset=utf-8",
+                    OnvifXml.fault("ter:NotAuthorized", "Sender not authorized").toByteArray(),
+                    stale = true,
+                )
             }
         }
 
@@ -343,18 +350,18 @@ class OnvifServer(
     private fun soapFault(code: String, msg: String, status: Int) =
         HttpResponse(status, OnvifXml.fault(code, msg, sender = status < 500).toByteArray(Charsets.UTF_8))
 
-    private fun unauthorized(ct: String, body: ByteArray): HttpResponse {
+    private fun unauthorized(ct: String, body: ByteArray, stale: Boolean = false): HttpResponse {
         val nonce = OnvifXml.randomHex()
         synchronized(issuedNonces) { issuedNonces[nonce] = System.currentTimeMillis() }
         return HttpResponse(401, body, ct, listOf(
-            "WWW-Authenticate" to "Digest realm=\"$realm\", qop=\"auth\", nonce=\"$nonce\", algorithm=MD5",
+            "WWW-Authenticate" to "Digest realm=\"$realm\", qop=\"auth\", nonce=\"$nonce\", algorithm=MD5" + if (stale) ", stale=true" else "",
             "WWW-Authenticate" to "Basic realm=\"$realm\""
         ))
     }
 
     // ===================================================================== auth
 
-    internal enum class AuthResult { OK, MISSING, BAD }
+    internal enum class AuthResult { OK, MISSING, BAD, STALE }
 
     private fun creds(): Pair<String, String>? = credentials()?.takeIf { it.first.isNotBlank() && it.second.isNotEmpty() }
 
@@ -363,7 +370,7 @@ class OnvifServer(
         val c = creds() ?: return AuthResult.MISSING
         val token = OnvifXml.find(header, "UsernameToken")
         if (token != null) return if (verifyUsernameToken(token, c)) AuthResult.OK else AuthResult.BAD
-        if (headers["authorization"] != null) return if (httpAuthOk(method, uri, headers)) AuthResult.OK else AuthResult.BAD
+        if (headers["authorization"] != null) return httpAuth(method, uri, headers)
         return AuthResult.MISSING
     }
 
@@ -383,30 +390,41 @@ class OnvifServer(
         }
     }
 
-    internal fun httpAuthOk(method: String, uri: String, headers: Map<String, String>): Boolean {
-        val c = creds() ?: return false
-        val auth = headers["authorization"] ?: return false
+    internal fun httpAuthOk(method: String, uri: String, headers: Map<String, String>): Boolean = httpAuth(method, uri, headers) == AuthResult.OK
+
+    /**
+     * HTTP Basic or Digest. Digest is checked against the nonce the client sent: the right password with a
+     * nonce we didn't issue or have forgotten (the stream turned off and on, or it aged out) is STALE, so
+     * the client gets a fresh challenge and signs in again once (RFC 7616 `stale=true`); a wrong one is BAD.
+     */
+    private fun httpAuth(method: String, uri: String, headers: Map<String, String>): AuthResult {
+        val c = creds() ?: return AuthResult.MISSING
+        val auth = headers["authorization"] ?: return AuthResult.MISSING
         return when {
             auth.startsWith("Basic ", true) -> {
-                val dec = OnvifBase64.decode(auth.substring(6).trim())?.toString(Charsets.UTF_8) ?: return false
+                val dec = OnvifBase64.decode(auth.substring(6).trim())?.toString(Charsets.UTF_8) ?: return AuthResult.BAD
                 val i = dec.indexOf(':')
-                i > 0 && OnvifXml.constantTimeEquals(dec.substring(0, i), c.first) &&
+                val ok = i > 0 && OnvifXml.constantTimeEquals(dec.substring(0, i), c.first) &&
                     OnvifXml.constantTimeEquals(dec.substring(i + 1), c.second)
+                if (ok) AuthResult.OK else AuthResult.BAD
             }
             auth.startsWith("Digest ", true) -> {
                 val p = parseAuthParams(auth.substring(7))
-                if (p["username"] != c.first) return false
-                val nonce = p["nonce"] ?: return false
-                if (synchronized(issuedNonces) { !issuedNonces.containsKey(nonce) }) return false
+                if (p["username"] != c.first) return AuthResult.BAD
+                val nonce = p["nonce"] ?: return AuthResult.BAD
                 val r = p["realm"] ?: realm
                 val ha1 = OnvifXml.md5Hex("${c.first}:$r:${c.second}")
                 val ha2 = OnvifXml.md5Hex("$method:${p["uri"] ?: uri}")
                 val expected = if (p["qop"] != null)
                     OnvifXml.md5Hex("$ha1:$nonce:${p["nc"]}:${p["cnonce"]}:${p["qop"]}:$ha2")
                 else OnvifXml.md5Hex("$ha1:$nonce:$ha2")
-                OnvifXml.constantTimeEquals(expected, p["response"].orEmpty())
+                when {
+                    !OnvifXml.constantTimeEquals(expected, p["response"].orEmpty()) -> AuthResult.BAD
+                    synchronized(issuedNonces) { !issuedNonces.containsKey(nonce) } -> AuthResult.STALE
+                    else -> AuthResult.OK
+                }
             }
-            else -> false
+            else -> AuthResult.BAD
         }
     }
 

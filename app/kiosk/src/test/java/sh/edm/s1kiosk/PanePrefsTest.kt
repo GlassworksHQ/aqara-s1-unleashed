@@ -62,7 +62,7 @@ class PanePrefsTest {
     /** The prefs class of each namespace, built over a file. */
     private val owners: Map<String, (SharedPreferences) -> Any> = mapOf(
         "sendspin" to ::SendspinPrefs, "assist" to ::VoicePrefs, "wall-base" to ::WallBasePrefs, "radio" to ::RadioPrefs,
-        "time-zone" to ::TimeZonePrefs, "diagnostics" to ::DiagnosticsPrefs, "bluetooth-proxy" to ::BluetoothProxyPrefs, "camera" to ::CameraPrefs,
+        "time-zone" to ::TimeZonePrefs, "diagnostics" to ::DiagnosticsPrefs, "bluetooth-proxy" to ::BluetoothProxyPrefs, "camera" to { sp -> CameraPrefs(sp) },
     )
 
     @After fun tearDown() {

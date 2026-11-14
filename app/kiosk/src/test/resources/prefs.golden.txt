@@ -13,7 +13,7 @@ kiosk|bluetooth_proxy_enabled|Boolean|false
 kiosk|camera_enabled|Boolean|false
 kiosk|camera_privacy|Boolean|false
 kiosk|camera_sensitivity|Int|5
-kiosk|camera_stream_password|String|-
+kiosk|camera_stream_password|String|null
 kiosk|camera_stream_user|String|null
 kiosk|camera_use|String|null
 kiosk|dashboards|String|""

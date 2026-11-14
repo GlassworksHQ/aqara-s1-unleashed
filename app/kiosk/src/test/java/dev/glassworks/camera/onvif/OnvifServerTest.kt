@@ -122,6 +122,46 @@ class OnvifServerTest {
         assertEquals(r.text, 200, r.status)
     }
 
+    private fun digest(nonce: String, password: String = pass, uri: String = "/onvif/media_service"): Map<String, String> {
+        val ha1 = OnvifXml.md5Hex("$user:Glassworks:$password")
+        val ha2 = OnvifXml.md5Hex("POST:$uri")
+        val resp = OnvifXml.md5Hex("$ha1:$nonce:00000001:abc:auth:$ha2")
+        return mapOf("authorization" to "Digest username=\"$user\", realm=\"Glassworks\", nonce=\"$nonce\", uri=\"$uri\", qop=auth, nc=00000001, cnonce=\"abc\", response=\"$resp\"")
+    }
+
+    @Test fun `a wrong sign-in gets a final SOAP auth fault, a forgotten nonce a fresh challenge`() {
+        // The tablet run: UniFi Protect polled GetProfiles with an older app's sign-in.
+        val s = newServer()
+        fun profiles(headers: Map<String, String>, header: String = "") =
+            s.handle("POST", "/onvif/media_service", headers, soap("<trt:GetProfiles/>", header).toByteArray())
+
+        // WS-Security with the wrong password: SOAP 1.2 env:Sender / ter:NotAuthorized, and no new challenge.
+        val ws = profiles(emptyMap(), usernameToken(password = "an-old-apps-password"))
+        assertEquals(400, ws.status)
+        val fault = OnvifXml.parse(ws.text)!!.documentElement
+        assertTrue(ws.text, ws.text.contains("s:Sender") && ws.text.contains("ter:NotAuthorized"))
+        assertNotNull(OnvifXml.find(fault, "Fault"))
+        assertTrue("nothing invites a retry", ws.headers.none { it.first == "WWW-Authenticate" })
+
+        // HTTP Digest with the wrong password, on a nonce we issued: the same final fault.
+        val issued = Regex("nonce=\"([^\"]+)\"").find(profiles(emptyMap()).headers.first { it.second.startsWith("Digest") }.second)!!.groupValues[1]
+        val wrong = profiles(digest(issued, password = "an-old-apps-password"))
+        assertEquals(400, wrong.status)
+        assertTrue(wrong.headers.none { it.first == "WWW-Authenticate" })
+
+        // The right password on a nonce this server never issued (it restarted): sign in again, once.
+        val stale = profiles(digest("0123456789abcdef0123456789abcdef"))
+        assertEquals(401, stale.status)
+        val again = stale.headers.first { it.second.startsWith("Digest") }.second
+        assertTrue(again, again.contains("stale=true"))
+        val fresh = Regex("nonce=\"([^\"]+)\"").find(again)!!.groupValues[1]
+        assertEquals(200, profiles(digest(fresh)).status)
+
+        // A forgotten nonce with the wrong password isn't stale: it's refused.
+        assertEquals(400, profiles(digest("fedcba9876543210fedcba9876543210", password = "an-old-apps-password")).status)
+        assertTrue("a stale nonce isn't logged as refused", logged.none { "refused" in it && "GetProfiles" in it && "match" !in it })
+    }
+
     @Test fun `device information and network interface carry identity`() {
         val s = newServer()
         val di = parseOk(call(s, "<tds:GetDeviceInformation/>")).documentElement

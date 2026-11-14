@@ -5,12 +5,17 @@
 package dev.glassworks.camera
 
 import android.content.SharedPreferences
+import java.security.SecureRandom
 
 /**
  * The camera pane's settings, in the file `PaneContext.prefs("camera")` gives it. Panels keep these
  * keys: never rename them. The stream's password is never logged.
  */
-class CameraPrefs(private val sp: SharedPreferences) {
+class CameraPrefs(
+    private val sp: SharedPreferences,
+    /** Makes the stream's password ([StreamSignIn]); a test passes its own. */
+    private val random: () -> SecureRandom = { SecureRandom() },
+) {
 
     /** The pane is on ([CameraDefinition.switch] writes it). Off until someone turns it on. */
     val enabled: Boolean get() = sp.getBoolean(KEY_ENABLED, false)
@@ -38,7 +43,17 @@ class CameraPrefs(private val sp: SharedPreferences) {
             val pass = sp.getString(KEY_STREAM_PASSWORD, null)?.takeIf { it.isNotEmpty() } ?: return null
             return user to pass
         }
-        set(v) { sp.edit().putString(KEY_STREAM_USER, v?.first).putString(KEY_STREAM_PASSWORD, v?.second).apply() }
+        set(v) { sp.edit().putString(KEY_STREAM_USER, v?.first).putString(KEY_STREAM_PASSWORD, v?.second).commit() }
+
+    /**
+     * The stream's sign-in, made now if there is none ([StreamSignIn]): the first time the stream is
+     * turned on, and again only after someone cleared it. True when it was made by this call.
+     */
+    @Synchronized fun ensureSignIn(): Boolean {
+        if (signIn != null) return false
+        signIn = StreamSignIn.generate(random())
+        return true
+    }
 
     val policy: CameraPolicy get() = CameraPolicy(privacy, use, onvif)
 

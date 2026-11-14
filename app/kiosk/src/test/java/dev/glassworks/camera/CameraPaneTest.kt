@@ -11,6 +11,7 @@ import dev.glassworks.pane.PanelEvent
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -58,8 +59,8 @@ class CameraPaneTest {
         override fun setMotion(active: Boolean) { motion += active }
     }
 
-    private inner class Rig(permitted: Boolean = true, ownSensor: Boolean = false) {
-        val prefs = CameraPrefs(file)
+    private inner class Rig(permitted: Boolean = true, ownSensor: Boolean = false, random: java.security.SecureRandom = java.security.SecureRandom()) {
+        val prefs = CameraPrefs(file) { random }
         val camera = Camera()
         val stream = Stream()
         val screen = mutableListOf<Pair<Boolean, Float>>()
@@ -137,15 +138,16 @@ class CameraPaneTest {
         assertNull(r.pane.problem)
     }
 
-    @Test fun theStreamRunsOnlyWithItsSwitchSnapshotsAndASignIn() {
+    @Test fun theStreamRunsOnlyWithItsSwitchAndSnapshotsAndAlwaysWithASignIn() {
         val r = Rig()
         r.pane.start()
         r.prefs.onvif = true; r.changed(CameraPrefs.KEY_ONVIF)
         assertNull("refused in Presence only", r.stream.running)
         r.prefs.use = CameraUse.PRESENCE_AND_SNAPSHOTS; r.changed(CameraPrefs.KEY_USE)
-        assertNull("no default password", r.stream.running)
+        // Never without a sign-in: this panel's own is made as the stream turns on (maintainer, 2026-11-14).
+        assertEquals(StreamSignIn.USERNAME, r.stream.running?.first)
         r.prefs.signIn = "viewer" to "s3cret"; r.changed(CameraPrefs.KEY_STREAM_PASSWORD)
-        assertEquals("viewer" to "s3cret", r.stream.running)
+        assertEquals("a sign-in set by hand replaces it", "viewer" to "s3cret", r.stream.running)
         r.someoneWalksIn()
         assertEquals("motion reaches the ONVIF events", listOf(true), r.stream.motion)
         r.prefs.use = CameraUse.PRESENCE; r.changed(CameraPrefs.KEY_USE)
@@ -248,5 +250,80 @@ class CameraPaneTest {
         }
         assertEquals("camera_presence clears", false, ProtoMessage(presence.state().toByteArray()).bool(2))
         assertEquals("the ONVIF motion follows it, on then off", listOf(true, false), r.stream.motion)
+    }
+
+    /** A SecureRandom whose numbers the test chooses, counting what it was asked. */
+    private class CountingRandom(private val pick: (Int) -> Int = { it }) : java.security.SecureRandom() {
+        var asked = 0
+        override fun nextInt(bound: Int): Int = pick(asked++) % bound
+    }
+
+    @Test fun turningTheStreamOnMakesThisPanelsSignInOnceFromSecureRandom() {
+        val random = CountingRandom()
+        val r = Rig(random = random)
+        r.pane.start()
+        assertNull("nothing made while the stream is off", r.prefs.signIn)
+        r.prefs.use = CameraUse.PRESENCE_AND_SNAPSHOTS; r.changed(CameraPrefs.KEY_USE)
+        r.prefs.onvif = true; r.changed(CameraPrefs.KEY_ONVIF)
+        val made = r.prefs.signIn!!
+        assertEquals(StreamSignIn.USERNAME, made.first)
+        assertTrue("at least 16 characters", made.second.length >= 16)
+        assertTrue("from the unambiguous alphabet", made.second.all { it in StreamSignIn.ALPHABET })
+        assertEquals("every character from the injected SecureRandom", made.second.length, random.asked)
+        assertEquals("the stream starts with it", made, r.stream.running)
+        // Stable: more checks, a restart of the pane, the stream off and on, never make another.
+        r.pane.reconcile()
+        r.pane.stop(); r.pane.start()
+        r.prefs.onvif = false; r.changed(CameraPrefs.KEY_ONVIF)
+        r.prefs.onvif = true; r.changed(CameraPrefs.KEY_ONVIF)
+        assertEquals(made, r.prefs.signIn)
+        assertEquals(made.second.length, random.asked)
+    }
+
+    @Test fun clearingItAndTurningTheStreamOnMakesANewOne() {
+        val r = Rig(random = java.security.SecureRandom())
+        r.pane.start()
+        r.prefs.use = CameraUse.PRESENCE_AND_SNAPSHOTS; r.prefs.onvif = true; r.changed(CameraPrefs.KEY_ONVIF)
+        val first = r.prefs.signIn!!
+        r.prefs.onvif = false; r.changed(CameraPrefs.KEY_ONVIF)
+        r.prefs.signIn = null; r.changed(CameraPrefs.KEY_STREAM_PASSWORD)
+        assertNull("cleared, and the stream is off: none", r.prefs.signIn)
+        assertNull(r.stream.running)
+        r.prefs.onvif = true; r.changed(CameraPrefs.KEY_ONVIF)
+        assertNotEquals(first.second, r.prefs.signIn!!.second)
+    }
+
+    @Test fun thePasswordsAlphabetLeavesOutWhatReadsWrong() {
+        assertTrue("no 0 O o 1 I i l", "0Oo1Iil".none { it in StreamSignIn.ALPHABET })
+        assertEquals("each character once", StreamSignIn.ALPHABET.length, StreamSignIn.ALPHABET.toSet().size)
+        assertTrue("enough symbols for over 100 bits in 20 characters", StreamSignIn.ALPHABET.length >= 50)
+    }
+
+    @Test fun twoPanelsGetDifferentPasswords() {
+        val a = CameraPrefs(app.getSharedPreferences("camera-a", Context.MODE_PRIVATE)).also { it.signIn = null }
+        val b = CameraPrefs(app.getSharedPreferences("camera-b", Context.MODE_PRIVATE)).also { it.signIn = null }
+        assertTrue(a.ensureSignIn()); assertTrue(b.ensureSignIn())
+        assertNotEquals(a.signIn!!.second, b.signIn!!.second)
+        assertEquals("never made again by itself", false, a.ensureSignIn())
+    }
+
+    @Test fun inPresenceOnlyNoSignInIsMadeAndNoStreamRuns() {
+        val r = Rig()
+        r.pane.start()
+        r.prefs.onvif = true; r.changed(CameraPrefs.KEY_ONVIF)
+        assertNull(r.prefs.signIn)
+        assertNull(r.stream.running)
+    }
+
+    @Test fun theSignInIsNeverLogged() {
+        org.robolectric.shadows.ShadowLog.clear()
+        val r = Rig(random = java.security.SecureRandom())
+        r.pane.start()
+        r.prefs.use = CameraUse.PRESENCE_AND_SNAPSHOTS; r.prefs.onvif = true; r.changed(CameraPrefs.KEY_ONVIF)
+        val (user, password) = r.prefs.signIn!!
+        val logs = org.robolectric.shadows.ShadowLog.getLogs().map { it.msg.orEmpty() }
+        assertTrue("it says one was made", logs.any { "sign-in made" in it })
+        assertTrue(logs.toString(), logs.none { password in it || user in it })
+        assertTrue("no entity carries it", r.pane.entities().none { e -> e.name.contains(password) || e.objectId.contains(password) })
     }
 }
