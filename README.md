@@ -36,8 +36,6 @@ everything about it is on its frame page.
 
 - **[Install it from your browser with Kiln →](https://kiln.glassworks.dev/aqara-s1-plus)** You
   need one USB cable and Chrome or Edge. Kiln backs the panel up first, and undo is built in.
-  Kiln hasn't yet done a full install on a real panel. The tested path is the earlier installer,
-  [s1.edm.sh](https://s1.edm.sh/), which runs the same recipe.
 - **[The Aqara S1 Plus frame page](frames/aqara-s1-plus/README.md)**: what you get, what works
   today, the radio, updates, known issues, undo and the FAQ.
 

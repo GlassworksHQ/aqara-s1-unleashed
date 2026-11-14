@@ -43,8 +43,10 @@ soon as it has power, within about two seconds. The screen stays black. That's e
 
 ## Web installer
 
-Open **[the installer](https://s1.edm.sh/)** in Chrome or Edge. Nothing
+Open **[Kiln](https://kiln.glassworks.dev/aqara-s1-plus)** in Chrome or Edge. Nothing
 is uploaded anywhere: the page talks to the panel over USB and keeps its backup in the browser.
+The screenshots and step names below are still the old S1 installer's, so Kiln's screens look
+different.
 
 ### 1 · Check this browser
 

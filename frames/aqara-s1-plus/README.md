@@ -118,7 +118,7 @@ the next one. "Verified" means tested on a real panel in a real home.
 | Presence wake, idle-off, night mode, auto-brightness | ✅ Works |
 | Aqara cloud and bloat disabled (reversible) | ✅ Works |
 | Boot splash and animation | 🧪 The Glassworks redraw has not yet run on a panel. The Glass Tile one before it works |
-| Web installer, command-line installer, undo | ✅ Verified end to end (firmware 4.5.80) with the earlier web installer, s1.edm.sh; boot patch tested on two firmware versions. Kiln has not yet done a full install on a panel |
+| Web installer, command-line installer, undo | ✅ Verified end to end (firmware 4.5.80) with the old S1 installer; boot patch tested on two firmware versions. Kiln has not yet done a full install on a panel |
 | Manage page in the browser (`:8099`, sign in through Home Assistant): status, log, diagnostics, signed-in browsers ([guide](../../docs/manage.md)) | 🧪 New · not yet checked on a panel; settings are read-only for now |
 | Panel health in Home Assistant: CPU, temperature, RAM, storage, Wi-Fi, uptime ([entities](../../docs/esphome.md#diagnostics)) | 🧪 New · not yet checked on a panel |
 | Bluetooth proxy for Home Assistant, listening only ([details](../../docs/esphome.md#bluetooth-proxy)) | 🧪 New · its engine met the S1 (HA found it, no Wi-Fi cost, 2026-11-14); the pane itself not yet |
@@ -206,13 +206,13 @@ Kiln runs entirely in your browser and uploads nothing. It walks you through fiv
 </tr>
 </table>
 
-The full walkthrough, per-OS setup and troubleshooting are in **[docs/install.md](../../docs/install.md)**.
+Per-OS setup, updating, undo and troubleshooting are in **[docs/install.md](../../docs/install.md)**. Its
+screenshots and step names are still the old S1 installer's.
 
 > [!NOTE]
 > The web installer has been tested end to end on a real S1 Plus (firmware 4.5.80), from FEL mode
-> through the backup, the install and the app setup, on the earlier installer page,
-> [s1.edm.sh](https://s1.edm.sh/). That page is still online and runs the same recipe as Kiln. Kiln
-> itself has not yet done a full install on a real panel. The boot patch has been tested on two firmware
+> through the backup, the install and the app setup, with the old S1 installer, which runs the same
+> recipe as Kiln. Kiln itself has not yet done a full install on a real panel. The boot patch has been tested on two firmware
 > versions: 4.5.80 and the December 2025 firmware the panel shipped with. So far that is a small
 > number of panels. If anything looks wrong, stop and
 > [open an issue](https://github.com/GlassworksHQ/glassworks/issues). Your backup is safe.
