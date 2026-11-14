@@ -416,6 +416,30 @@ class ScreenBehaviourPinTest {
         assertTrue(awake!!.isHeld)
     }
 
+    /**
+     * #257 with #118's hold (a high or critical notification): after a lockNow sleep, a hold keeps the
+     * screen on past Android's timeout and past the idle timeout, for as long as it is held. Released,
+     * the idle timeout counts from the release.
+     */
+    @Test fun aHoldLastsUntilReleasedThenTheIdleTimeoutCountsFromThere() {
+        admin()
+        h.setClock(12, 0)
+        h.start()
+        h.advance(121_000)                       // idle: sleep (lockNow)
+        h.screenOff()
+        h.hold("notification")
+        h.screenOn()
+        h.advance(30_000)
+        assertTrue("on past Android's own timeout", awake!!.isHeld)
+        h.advance(300_000)
+        assertTrue("and past the idle timeout, while held", awake!!.isHeld)
+        h.release("notification")
+        h.advance(118_000)
+        assertTrue("released: the idle timeout counts from the release", awake!!.isHeld)
+        h.advance(3_000)
+        assertFalse(awake!!.isHeld)
+    }
+
     /** #257, CodeRabbit on #258: the power key before its broadcast arrives: the renewal doesn't wake the screen again. */
     @Test fun noRenewalWhileTheScreenIsGoingOff() {
         h.setClock(12, 0)

@@ -152,6 +152,9 @@ open the entity, and turn on *Enabled*.
 | Wake word threshold | `wake_word_threshold` | voice | config | off | Set once |
 | Music Assistant player (Sendspin) | `sendspin` | music | config | off | Set once |
 | Music Assistant player status | `sendspin_status` | music | diagnostic | off | Troubleshooting |
+| Notifications | `notifications` | notifications | config | off | Set once: the pane's on/off. The pane itself is off by default ([notifications.md](notifications.md)) |
+| Do not disturb | `do_not_disturb` | notifications | config | on | Automations (bedtime) |
+| `notify` action (`esphome.<panel>_notify`) | `notify` | notifications | n/a | listed | An action, not an entity: HA lists it while the panel is connected, and it answers "off" while the pane is off |
 | Radio status | `radio_status` | radio | diagnostic | on | People check it when they use the radio |
 | Radio mode | `radio_mode` | radio | config | off | Set once |
 | Zigbee stack | `zigbee_stack` | radio | config | off | Set once |

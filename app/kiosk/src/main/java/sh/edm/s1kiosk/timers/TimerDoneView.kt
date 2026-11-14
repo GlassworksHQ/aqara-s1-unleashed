@@ -1,7 +1,6 @@
 package sh.edm.s1kiosk.timers
 
 import android.content.Context
-import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Outline
@@ -25,12 +24,12 @@ import sh.edm.s1kiosk.TimerBoard
 import sh.edm.s1kiosk.setup.Backdrop
 import sh.edm.s1kiosk.ui.Bakery
 import sh.edm.s1kiosk.ui.Dither
-import sh.edm.s1kiosk.ui.FloatImage
 import sh.edm.s1kiosk.ui.Inter
 import sh.edm.s1kiosk.voice.Fader
 import sh.edm.s1kiosk.voice.MainTextFit
 import sh.edm.s1kiosk.voice.OrbArt
-import java.nio.ByteBuffer
+import sh.edm.s1kiosk.voice.OrbBakes
+import sh.edm.s1kiosk.voice.OrbBakes.Companion.bitmap
 import kotlin.math.sin
 
 /**
@@ -41,7 +40,11 @@ import kotlin.math.sin
  * 60 s after the last finish. Same layout numbers as VoiceOverlay (orb centre 480,162 dp; label 252;
  * main text 282). Main thread.
  */
-class TimerDoneView(context: Context) : FrameLayout(context) {
+class TimerDoneView(
+    context: Context,
+    /** The orb's sphere and shine, shared with the critical alert's orb (#118). */
+    private val orbs: OrbBakes = OrbBakes(),
+) : FrameLayout(context) {
 
     /** After a tap dismissed it (the overlay refreshes the timers). */
     var onDismissed: (() -> Unit)? = null
@@ -219,12 +222,12 @@ class TimerDoneView(context: Context) : FrameLayout(context) {
     private fun bake() {
         if (baked) return
         baked = true
+        // The amber layers are the timer's own; the sphere and shine are shared (OrbBakes).
         Bakery.bake("timer orb", {
             val d = Dither(0x51ED270B)
-            fun FloatImage.bmp(): Bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
-                .apply { copyPixelsFromBuffer(ByteBuffer.wrap(toRgbaBytes(d))) }
-            listOf(art.glow(OrbArt.Tint.AMBER).bmp(), art.sphere().bmp(), art.core(OrbArt.Tint.AMBER).bmp(), art.shine().bmp())
-        }) { b -> listOf(glow, sphere, core, shine).zip(b).forEach { (view, bmp) -> view.setImageBitmap(bmp) } }
+            listOf(art.glow(OrbArt.Tint.AMBER).bitmap(d), art.core(OrbArt.Tint.AMBER).bitmap(d))
+        }) { b -> listOf(glow, core).zip(b).forEach { (view, bmp) -> view.setImageBitmap(bmp) } }
+        orbs.layers(art) { l -> sphere.setImageBitmap(l.sphere); shine.setImageBitmap(l.shine) }
     }
 
     // ---------------------------------------------------------------- pieces

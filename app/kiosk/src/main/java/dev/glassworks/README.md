@@ -65,6 +65,7 @@ change until Glassworks v1.
 | `SettingsSection` | A section of the settings: typed items (`SettingsItem`) the panel's menu draws, and the Manage page (#33) will. `settingsOrder` places them. |
 | `ScreenPolicy` | (`dev.glassworks.screen`) Wake on approach, idle off, the night window and its timeout, the brightness curve and the screen mode. It reads the frame's `PresenceSource` and `LightSource` and the app's `ScreenSettings`. One per process, on `GlassworksRuntime.screen`. |
 | `Platform` | (`dev.glassworks.platform`) What the running Android can do, as named queries (`hasNotificationChannels`, `hasWindowInsetsController`, …) and small shims. The only place that reads `Build.VERSION.SDK_INT`. |
+| `NotificationsPane` | (`dev.glassworks.notifications`) Notifications from Home Assistant: the `notify` action, Do not disturb, the rules for each priority, and a tapped button as the bus event `esphome.notification_action`. A core pane, off by default. The panel's overlay draws what its `NotificationsHub` holds. How to use it: [docs/notifications.md](../../../../../../../docs/notifications.md). |
 | `DiagnosticsPane` | (`dev.glassworks.diagnostics`) The panel's health as diagnostic entities: CPU, temperature, RAM, storage, Wi-Fi, uptime, the last restart reason. A core pane, so every frame has it. The entities are in [docs/esphome.md](../../../../../../../docs/esphome.md#diagnostics). |
 | `BluetoothProxyPane` | (`dev.glassworks.bluetoothproxy`) The panel as an ESPHome Bluetooth proxy (#121). The work is in the [bluetooth-proxy library](../../../../../../libs/bluetooth-proxy/README.md); the pane gives it the device's server and adds two diagnostic entities. Its page is the frame's to draw ([`BluetoothProxyModel`](bluetoothproxy/ProxyPhase.kt)); the S1's is `BluetoothProxyPage`. See [its README](bluetoothproxy/README.md). |
 | `Engine` | (`dev.glassworks.engine`) The web engine that shows the dashboard: open a page, load, reload, go back, restart after a crash, and talk to the page's scripts. `GeckoEngine` (`dev.glassworks.engine.gecko`) is the only code that uses GeckoView. One per process, on `GlassworksRuntime.engine`. |
@@ -98,7 +99,10 @@ setup.
 - The **settings worth changing from HA** are config entities (`EntityCategory.CONFIG`). The rest
   stay on the panel and its Manage page.
 - Its **commands** are ESPHome actions (`esphome.<node>_<action>`).
-- What it **reports** goes out as events (`EventEntity`).
+- What it **reports** goes out as events (`EventEntity`). The one exception (#118, approved
+  2026-11-13): a report whose name the automation chose, like a notification's button id, goes out
+  as a bus event, `ctx.fireEvent(HomeAssistantEvent("esphome.<name>", data))`. HA refuses event types
+  an event entity didn't list up front, and a bus event needs no option in HA either.
 
 Settings for the whole house are HA's job: a scene or a script sets the same entity on every panel.
 
@@ -246,7 +250,8 @@ Assistant, which reconnects and lists the entities again. `entities()` must retu
 then on.
 
 To fire an ESPHome event, a pane calls `ctx.sendEvent(entity, type)` with an `EventEntity` from its
-current list. Keep the instances: the server only fires events for the entity objects it was given,
+current list. For an event whose name isn't known up front, `ctx.fireEvent(HomeAssistantEvent(...))`
+fires it on HA's bus instead ([the exception above](#2-it-works-through-esphome-alone)). Keep the instances: the server only fires events for the entity objects it was given,
 so build the list once per state, not on every `entities()` call. A pane does not hold the API
 server for this. The core owns it, including its restarts.
 

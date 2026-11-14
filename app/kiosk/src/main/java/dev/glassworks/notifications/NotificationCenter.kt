@@ -29,8 +29,11 @@ interface NotificationOutputs {
     /** Turn the screen on. [overNight]: at full brightness, past night dimming. */
     fun wake(overNight: Boolean)
 
-    /** Play [sound]. The player claims the speaker (`PanelEvent.SpeakerClaimed`) while it plays. */
-    fun play(sound: Sound)
+    /**
+     * Play [sound]. The player claims the speaker (`PanelEvent.SpeakerClaimed`) while it plays.
+     * [critical]: it belongs to a critical notification, so it repeats while one is up; otherwise once.
+     */
+    fun play(sound: Sound, critical: Boolean)
 }
 
 /**
@@ -70,15 +73,30 @@ class NotificationCenter(
     private var timer: Future<*>? = null
     private var closed = false
 
-    /** One call of the `notify` action. Throws [IllegalArgumentException] for Home Assistant to show. */
-    fun handle(message: String, title: String, data: String) {
+    companion object {
+        /** What a call gets while the pane is off or stopping. */
+        const val OFF = "Notifications are off on this panel"
+    }
+
+    /**
+     * One call of the `notify` action. Throws [IllegalArgumentException] for Home Assistant to show, and
+     * [IllegalStateException] once [close]d. Runs under the center's lock, so [close] waits for a call
+     * in flight, and no screen or sound effect starts after it.
+     */
+    fun handle(message: String, title: String, data: String): Unit = synchronized(lock) {
+        check(!closed) { OFF }
         when (val c = NotifyRequest.parse(message, title, data, haBase())) {
             is NotifyCommand.Clear -> if (store.clear(c.tag) != null) changed()
             is NotifyCommand.Post -> {
-                val d = store.post(c.notification, doNotDisturb()).entry.delivery
+                val p = store.post(c.notification, doNotDisturb())
+                val d = p.entry.delivery
+                // Dropped at once to stay under the store's limit: it isn't on the panel, so it makes no noise.
+                val kept = p.entry !in p.dropped
                 try {
-                    if (d.wake) out.wake(d.overNight)
-                    if (d.sound && c.notification.sound != Sound.NONE) out.play(c.notification.sound)
+                    if (kept && d.wake) out.wake(d.overNight)
+                    if (kept && d.sound && c.notification.sound != Sound.NONE) {
+                        out.play(c.notification.sound, c.notification.priority == Priority.CRITICAL)
+                    }
                 } finally {
                     changed()
                 }
@@ -96,6 +114,24 @@ class NotificationCenter(
         }
     }
 
+    /**
+     * A button's `uri` was tapped: [url] (already checked by [HaUrls]) opens full screen, with the same
+     * way back as a `url` notification. Silent; the person asked for it, so Do not disturb doesn't hold it.
+     */
+    fun openPage(title: String, url: String) {
+        store.post(Notification(title, "", url = url, sound = Sound.NONE), doNotDisturb = false)
+        changed()
+    }
+
+    /**
+     * Do not disturb changed. Turned on, it holds what is up now as it would have held it arriving: a
+     * high one's card goes to the list and lets the screen go; a critical one stays.
+     */
+    fun doNotDisturbChanged(on: Boolean): Unit = synchronized(lock) {
+        if (closed || !on) return
+        if (store.holdForDoNotDisturb()) changed()
+    }
+
     /** Closed by hand: the card's close, a swipe, or Back on a page. */
     fun dismiss(id: Long) {
         if (store.dismiss(id) != null) changed()
@@ -105,6 +141,9 @@ class NotificationCenter(
     fun show(id: Long) {
         if (store.show(id) != null) changed()
     }
+
+    /** [close] was called: the pane stopped. */
+    val isClosed: Boolean get() = synchronized(lock) { closed }
 
     /**
      * Stops the timeout timer. Nothing is scheduled after this, and a timeout already firing does
@@ -118,6 +157,9 @@ class NotificationCenter(
 
     /** Takes the snapshot and renders it under one lock, so an older snapshot never lands after a newer one. */
     private fun changed(): Unit = synchronized(lock) {
+        // Closed: the pane stopped and cleared the screen. A call that got the center just before
+        // must not put its cards back.
+        if (closed) return
         store.expire()
         val s = store.snapshot()
         try {

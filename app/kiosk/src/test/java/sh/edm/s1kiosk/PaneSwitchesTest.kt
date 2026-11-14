@@ -26,9 +26,10 @@ class PaneSwitchesTest {
 
     @Test fun everyPaneSectionHasItsOnOffAtTheTop() {
         val sections = paneSections(definitions)
-        assertEquals(listOf("assist", "sendspin", "radio", "bluetooth-proxy", "wall-base", "time-zone", "diagnostics"), sections.map { it.id })
-        assertEquals(listOf("Voice", "Music", "Zigbee / Thread radio", "Bluetooth proxy", "Wall base", "Time zone", "Diagnostics"), sections.map { it.master?.title })
-        // No device runs here: a page that shows the running pane says so (#212); the radio and the Bluetooth proxy have their own.
+        assertEquals(listOf("assist", "sendspin", "notifications", "radio", "bluetooth-proxy", "wall-base", "time-zone", "diagnostics"), sections.map { it.id })
+        assertEquals(listOf("Voice", "Music", "Notifications", "Zigbee / Thread radio", "Bluetooth proxy", "Wall base", "Time zone", "Diagnostics"), sections.map { it.master?.title })
+        // No device runs here: a page that shows the running pane says so (#212); the radio, the Bluetooth proxy
+        // and notifications (off by default, so its page is its off note) have their own.
         val waiting = sections.filter { s -> s.items.singleOrNull().let { it is SettingsItem.Note && it.text() == NOT_RUNNING } }
         assertEquals(listOf("assist", "sendspin", "wall-base", "time-zone", "diagnostics"), waiting.map { it.id })
     }
@@ -38,8 +39,8 @@ class PaneSwitchesTest {
         org.robolectric.Shadows.shadowOf(app.packageManager).setSystemFeature(android.content.pm.PackageManager.FEATURE_BLUETOOTH_LE, true)
         assertEquals(
             listOf(
-                "Voice" to "Assist and timers", "Music" to "A Sendspin speaker", "Zigbee / Thread radio" to "For your devices",
-                "Bluetooth proxy" to "For BLE sensors", "Wall base" to "The S1's wired base",
+                "Voice" to "Assist and timers", "Music" to "A Sendspin speaker", "Notifications" to "On-screen alerts",
+                "Zigbee / Thread radio" to "For your devices", "Bluetooth proxy" to "For BLE sensors", "Wall base" to "The S1's wired base",
             ),
             definitions.mapNotNull { it.setupChoice }.map { it.title to it.detail },
         )
@@ -48,12 +49,12 @@ class PaneSwitchesTest {
     /** Ids are permanent in Home Assistant. Only `sendspin` existed, and keeps its name. Each is off in HA until turned on there (#132, #208). */
     @Test fun eachSwitchIsAConfigEntityHomeAssistantKeeps() {
         val s = definitions.mapNotNull { it.switch }.map { it.entity() }
-        assertEquals(listOf("voice", "sendspin", "bluetooth_proxy", "wall_base", "keep_time_zone", "diagnostics"), s.map { it.objectId })
+        assertEquals(listOf("voice", "sendspin", "notifications", "bluetooth_proxy", "wall_base", "keep_time_zone", "diagnostics"), s.map { it.objectId })
         assertEquals("Music Assistant player (Sendspin)", s[1].name)
-        assertEquals(List(6) { true }, s.map { it.disabledByDefault })
+        assertEquals(List(7) { true }, s.map { it.disabledByDefault })
         assertEquals(setOf(sh.edm.esphome.EntityCategory.CONFIG), s.map { it.category }.toSet())
         // #210 verifier: turned on, a pane opens the microphone or a port; a keyless LAN client may not.
-        assertEquals("only an authenticated connection changes a pane's on/off", List(6) { true }, s.map { it.authOnly })
+        assertEquals("only an authenticated connection changes a pane's on/off", List(7) { true }, s.map { it.authOnly })
     }
 
     /** The device info's voice features follow the voice pane's switch, which says so: the shell names no pane. */
@@ -61,10 +62,13 @@ class PaneSwitchesTest {
         assertEquals(listOf("assist"), definitions.filter { it.switch?.voiceAssistant == true }.map { it.id })
     }
 
-    /** The Bluetooth proxy is the one off until turned on: it starts the radio scanning (#67, #121). */
-    @Test fun everyPaneButTheBluetoothProxyIsOnUntilTurnedOff() {
+    /** Notifications (#118, Principle 7) and the Bluetooth proxy (it starts the radio scanning, #121) are off until turned on. */
+    @Test fun everyPaneButNotificationsAndTheBluetoothProxyIsOnUntilTurnedOff() {
         assertEquals(
-            listOf("assist" to true, "sendspin" to true, "bluetooth-proxy" to false, "wall-base" to true, "time-zone" to true, "diagnostics" to true),
+            listOf(
+                "assist" to true, "sendspin" to true, "notifications" to false, "bluetooth-proxy" to false,
+                "wall-base" to true, "time-zone" to true, "diagnostics" to true,
+            ),
             definitions.mapNotNull { d -> d.switch?.let { d.id to it.on } },
         )
     }

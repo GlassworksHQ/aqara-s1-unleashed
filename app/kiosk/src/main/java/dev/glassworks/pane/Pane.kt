@@ -11,6 +11,7 @@ import sh.edm.esphome.ApiServer
 import sh.edm.esphome.DeviceIdentity
 import sh.edm.esphome.EspHomeLog
 import sh.edm.esphome.EventEntity
+import sh.edm.esphome.HomeAssistantEvent
 import java.net.InetAddress
 
 /**
@@ -77,6 +78,12 @@ class PaneContext(
      * thread; a no-op while the server is not running.
      */
     val sendEvent: (EventEntity, String) -> Unit,
+    /**
+     * Fires an event on Home Assistant's bus (`esphome.<name>`), for a report an event entity can't
+     * carry: HA refuses event types the entity didn't list up front. The notifications pane's taps go
+     * this way. Safe from any thread; dropped while no Home Assistant is connected.
+     */
+    val fireEvent: (HomeAssistantEvent) -> Unit = {},
 )
 
 /**

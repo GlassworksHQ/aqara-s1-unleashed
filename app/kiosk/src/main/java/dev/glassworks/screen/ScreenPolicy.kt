@@ -27,6 +27,8 @@ import kotlin.math.log10
  *  - After `idleOffSec` with nobody near and no touch, the screen turns off
  *    (`nightIdleOffSec` inside the night window).
  *  - Brightness follows ambient light (log curve), capped lower at night.
+ *  - [hold] keeps the screen on at the day's brightness, past night dimming and the idle timeout,
+ *    while something urgent is on it (a high or critical notification), until [release].
  *
  * Turning the screen off uses DevicePolicyManager.lockNow() when [admin] is an active device admin.
  *
@@ -49,7 +51,7 @@ class ScreenPolicy(
     /** The wake lock's tag, as `dumpsys power` shows it. */
     private val wakeLockTag: String,
 ) {
-    private companion object {
+    internal companion object {
         const val TICK_MS = 1000L
         /**
          * The wake lock's own timeout, a safety net if the tick stops: the tick takes it again every
@@ -57,6 +59,10 @@ class ScreenPolicy(
          */
         const val AWAKE_MAX_MS = 10 * 60_000L
         const val AWAKE_REFRESH_MS = 60_000L
+
+        /** The most automatic brightness may reach: lower at night, unless something [held] the screen. */
+        fun brightnessCap(night: Boolean, held: Boolean, max: Float, nightMax: Float): Float =
+            if (night && !held) minOf(max, nightMax) else max
     }
 
     private lateinit var ctx: Context
@@ -75,6 +81,11 @@ class ScreenPolicy(
     @Volatile var brightness = -1f; private set
     @Volatile var screenOn = true; private set
     private var lastActivity = SystemClock.elapsedRealtime()
+    /** Why the screen is held ([hold]). Main thread. */
+    private val holds = HashSet<String>()
+
+    /** Something holds the screen on ([hold]). */
+    val held: Boolean get() = holds.isNotEmpty()
 
     /** Activity hooks: keep-screen-on flag and window brightness (0..1, or -1 = system). */
     var onKeepScreenOn: ((Boolean) -> Unit)? = null
@@ -189,6 +200,25 @@ class ScreenPolicy(
         awake?.takeIf { it.isHeld }?.release()
     }
 
+    /**
+     * Wakes the screen and keeps it on, at the day's maximum brightness, past night dimming and the idle
+     * timeout, until [release] with the same [reason]. Several reasons can hold it at once.
+     */
+    fun hold(reason: String) {
+        val first = holds.isEmpty()
+        holds += reason
+        if (started) wake(reason)
+        if (first && started) updateBrightness(immediate = true)
+    }
+
+    /** Lets go of a [hold]. The idle timeout counts from now, so the screen doesn't go dark at once. */
+    fun release(reason: String) {
+        if (!holds.remove(reason)) return
+        Log.i(logTag, "release ($reason)")
+        lastActivity = SystemClock.elapsedRealtime()
+        if (holds.isEmpty() && started) updateBrightness(immediate = true)
+    }
+
     fun sleep(reason: String) {
         Log.i(logTag, "sleep ($reason) admin=$isAdmin")
         letGo()
@@ -223,7 +253,7 @@ class ScreenPolicy(
                 return
             }
             val now = SystemClock.elapsedRealtime()
-            if (near) lastActivity = now
+            if (near || holds.isNotEmpty()) lastActivity = now
             val timeoutSec = if (isNight()) prefs.nightIdleOffSec else prefs.idleOffSec
             if (timeoutSec > 0 && keepOn && now - lastActivity >= timeoutSec * 1000L) {
                 sleep("idle ${timeoutSec}s")
@@ -301,7 +331,7 @@ class ScreenPolicy(
         refreshBrightness()
     }
 
-    private fun updateBrightness() {
+    private fun updateBrightness(immediate: Boolean = false) {
         if (!prefs.autoBrightness || lux.isNaN()) {
             val manual = if (prefs.autoBrightness) -1f else prefs.manualBrightness.let { if (it > 0f) it else -1f }
             if (brightness != manual) {
@@ -311,13 +341,13 @@ class ScreenPolicy(
             }
             return
         }
-        val max = if (isNight()) minOf(prefs.maxBrightness, prefs.nightMaxBrightness) else prefs.maxBrightness
+        val max = brightnessCap(isNight(), held, prefs.maxBrightness, prefs.nightMaxBrightness)
         val min = minOf(prefs.minBrightness, max)
         // 0 lux -> min, ~1000 lux -> max, logarithmic in between.
         val t = (log10(lux.coerceAtLeast(0f) + 1f) / 3f).coerceIn(0f, 1f)
         val target = min + (max - min) * t
         // Smooth, and ignore tiny changes to avoid flicker.
-        val next = if (brightness < 0f) target else brightness + (target - brightness) * 0.3f
+        val next = if (brightness < 0f || immediate) target else brightness + (target - brightness) * 0.3f
         if (brightness < 0f || kotlin.math.abs(next - brightness) > 0.01f) {
             brightness = next
             onBrightness?.invoke(next)

@@ -31,7 +31,7 @@ class NotificationCenterTest {
             this@NotificationCenterTest.cards = cards; this@NotificationCenterTest.page = page; renders++
         }
         override fun wake(overNight: Boolean) { woke += overNight }
-        override fun play(sound: Sound) { if (playFails) error("no speaker"); played += sound }
+        override fun play(sound: Sound, critical: Boolean) { if (playFails) error("no speaker"); played += sound }
     }
 
     private val center = NotificationCenter(
@@ -129,7 +129,7 @@ class NotificationCenterTest {
         center.close()
         assertTrue(futures.last().isCancelled)
         val before = timers.size
-        center.handle("m", "garage", """{"timeout":30}""")
+        assertThrows("closed: it answers off", IllegalStateException::class.java) { center.handle("m", "garage", """{"timeout":30}""") }
         assertEquals("nothing is scheduled after close", before, timers.size)
     }
 
@@ -144,7 +144,7 @@ class NotificationCenterTest {
                     Thread.yield()
                 }
                 override fun wake(overNight: Boolean) {}
-                override fun play(sound: Sound) {}
+                override fun play(sound: Sound, critical: Boolean) {}
             },
             {}, { false }, { null }, { 0L }, { _, _ -> CompletableFuture<Unit>() },
         )
@@ -163,5 +163,79 @@ class NotificationCenterTest {
         t = 30_000; fire()
         assertEquals(before, renders)
         assertEquals("the entry wasn't touched", listOf("door"), cards.map { it.notification.title })
+    }
+
+    /** Verifier carry-over: a render reads one snapshot. The hook changes the store between separate reads. */
+    @Test
+    fun aRenderReadsOneSnapshot() {
+        val store = NotificationStore({ 0L })
+        val seen = mutableListOf<Pair<Int, Int>>()
+        val c = NotificationCenter(
+            store,
+            object : NotificationOutputs {
+                override fun render(cards: List<NotificationStore.Entry>, page: NotificationStore.Entry?, list: List<NotificationStore.Entry>) {
+                    seen += cards.size to list.size
+                }
+                override fun wake(overNight: Boolean) {}
+                override fun play(sound: Sound, critical: Boolean) {}
+            },
+            {}, { false }, { null }, { 0L }, { _, _ -> CompletableFuture<Unit>() },
+        )
+        var sneaked = false
+        store.afterRead = { what ->
+            if (what == "cards" && !sneaked) { sneaked = true; store.post(Notification("sneaked in", ""), false) }
+        }
+        c.handle("m", "first", "")
+        assertEquals("cards and list come from the same moment", listOf(1 to 1), seen)
+        assertTrue("the center never read the lists one by one", !sneaked)
+    }
+
+    /** Verifier carry-over: close() with a real timer. The timeout falls after close and changes nothing. */
+    @Test
+    fun closeWithARealTimer() {
+        val exec = java.util.concurrent.ScheduledThreadPoolExecutor(1)
+        try {
+            var renders = 0
+            val clock = { System.nanoTime() / 1_000_000 }
+            val c = NotificationCenter(
+                NotificationStore(clock),
+                object : NotificationOutputs {
+                    override fun render(cards: List<NotificationStore.Entry>, page: NotificationStore.Entry?, list: List<NotificationStore.Entry>) { renders++ }
+                    override fun wake(overNight: Boolean) {}
+                    override fun play(sound: Sound, critical: Boolean) {}
+                },
+                {}, { false }, { null }, clock,
+                { ms, action -> exec.schedule({ action() }, ms, java.util.concurrent.TimeUnit.MILLISECONDS) },
+            )
+            c.handle("m", "t", """{"timeout":1}""")
+            assertEquals(1, exec.queue.size)
+            c.close()
+            Thread.sleep(1_500)
+            assertEquals("nothing rendered after close", 1, renders)
+            assertEquals("the timer was cancelled", 0, exec.queue.count { !(it as java.util.concurrent.Future<*>).isCancelled })
+        } finally {
+            exec.shutdownNow()
+        }
+    }
+
+    /** Verifier carry-over: a notification dropped at once by the store's limit makes no sound and wakes nothing. */
+    @Test
+    fun aDroppedNotificationDoesNotChime() {
+        val heard = mutableListOf<Sound>()
+        var woke = 0
+        val c = NotificationCenter(
+            NotificationStore({ 0L }, max = 1),
+            object : NotificationOutputs {
+                override fun render(cards: List<NotificationStore.Entry>, page: NotificationStore.Entry?, list: List<NotificationStore.Entry>) {}
+                override fun wake(overNight: Boolean) { woke++ }
+                override fun play(sound: Sound, critical: Boolean) { heard += sound }
+            },
+            {}, { false }, { null }, { 0L }, { _, _ -> CompletableFuture<Unit>() },
+        )
+        c.handle("m", "smoke", """{"priority":"critical"}""")
+        heard.clear(); woke = 0
+        c.handle("m", "washer", """{"priority":"high"}""")
+        assertEquals(emptyList<Sound>(), heard)
+        assertEquals(0, woke)
     }
 }

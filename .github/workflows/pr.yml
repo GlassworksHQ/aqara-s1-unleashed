@@ -82,7 +82,7 @@ jobs:
       - name: Still updates panels in place
         run: tools/release/check-update-compat.sh app/kiosk/build/outputs/apk/release/kiosk-release-unsigned.apk
 
-      # EspHomeKeepaliveTest (#180), EspHomeActionsCameraTest (#120) and BluetoothProxyHomeAssistantTest (#121) against the real aioesphomeapi
+      # EspHomeKeepaliveTest (#180), EspHomeActionsCameraTest (#120), EspHomeHaEventTest (#118) and BluetoothProxyHomeAssistantTest (#121) against the real aioesphomeapi
       # client. They skip without ESPHOME_PYTHON, so this step fails if one skipped. About 30 s (venv
       # from hashed wheels, then those tests only), and only when app/ or this file changed. The kiosk's EspHomeApiTest uses the same
       # client but isn't here yet. It failed once in two CI runs (#184).
@@ -105,7 +105,7 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Keepalive, actions, camera and Bluetooth proxy tests (real aioesphomeapi client)
+      - name: Keepalive, actions, camera, event and Bluetooth proxy tests (real aioesphomeapi client)
         if: steps.esphome.outputs.run == 'true'
         working-directory: app
         run: |
@@ -114,12 +114,13 @@ jobs:
             -r libs/esphome-api/test-requirements.txt
           results=libs/esphome-api/build/test-results/test
           reports="$results/TEST-sh.edm.esphome.EspHomeKeepaliveTest.xml $results/TEST-sh.edm.esphome.EspHomeActionsCameraTest.xml
+            $results/TEST-sh.edm.esphome.EspHomeHaEventTest.xml
             libs/bluetooth-proxy/build/test-results/testDebugUnitTest/TEST-sh.edm.bluetoothproxy.BluetoothProxyHomeAssistantTest.xml"
           # --rerun: Gradle doesn't see ESPHOME_PYTHON, and the Unit tests step left the task up to date.
           # On a failure, the report's message holds the Python client's output.
           ESPHOME_PYTHON="$RUNNER_TEMP/esphome-venv/bin/python" ./gradlew --no-daemon --continue \
             :esphome-api:test --tests sh.edm.esphome.EspHomeKeepaliveTest \
-            --tests sh.edm.esphome.EspHomeActionsCameraTest --rerun \
+            --tests sh.edm.esphome.EspHomeActionsCameraTest --tests sh.edm.esphome.EspHomeHaEventTest --rerun \
             :bluetooth-proxy:testDebugUnitTest --tests sh.edm.bluetoothproxy.BluetoothProxyHomeAssistantTest --rerun \
             || { cat $reports; exit 1; }
           for report in $reports; do

@@ -1,0 +1,8 @@
+{
+  "id": "notifications",
+  "name": "Notifications",
+  "does": "Home Assistant's notifications over the dashboard, with a picture, buttons and a sound.",
+  "requires": [],
+  "status": "alpha",
+  "docs": "docs/notifications.md"
+}

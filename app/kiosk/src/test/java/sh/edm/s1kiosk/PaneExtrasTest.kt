@@ -28,7 +28,7 @@ class PaneExtrasTest {
             listOf(
                 "voice_enabled", "wake_model", "wake_threshold", "mic_gain", "mic_muted",
                 "sendspin_enabled", "sendspin_server", "sendspin_unpaired_access", "sendspin_flac",
-                "bluetooth_proxy_enabled", "wall_base_enabled", "base_backend", "base_transport", "time_zone_enabled", "diagnostics_enabled",
+                "notifications_enabled", "bluetooth_proxy_enabled", "wall_base_enabled", "base_backend", "base_transport", "time_zone_enabled", "diagnostics_enabled",
             ),
             extras.map { it.name },
         )
@@ -59,12 +59,12 @@ class PaneExtrasTest {
     @Test
     fun everyPaneTurnsOffAndOnWithoutARestart() {
         val p = KioskPrefs(app)
-        val flags = { listOf(p.voice.enabled, p.sendspin.enabled, p.wallBase.enabled, p.timeZone.enabled, p.diagnostics.enabled) }
-        val all = listOf("voice_enabled", "sendspin_enabled", "bluetooth_proxy_enabled", "wall_base_enabled", "time_zone_enabled", "diagnostics_enabled")
+        val flags = { listOf(p.voice.enabled, p.sendspin.enabled, p.notifications.enabled, p.bluetoothProxy.enabled, p.wallBase.enabled, p.timeZone.enabled, p.diagnostics.enabled) }
+        val all = listOf("voice_enabled", "sendspin_enabled", "notifications_enabled", "bluetooth_proxy_enabled", "wall_base_enabled", "time_zone_enabled", "diagnostics_enabled")
         assertFalse("applied live", extras.applyFrom(Intent().apply { all.forEach { putExtra(it, false) } }))
-        assertEquals(List(5) { false }, flags())
+        assertEquals(List(7) { false }, flags())
         assertFalse(extras.applyFrom(Intent().apply { all.forEach { putExtra(it, true) } }))
-        assertEquals(List(5) { true }, flags())
+        assertEquals(List(7) { true }, flags())
     }
 
     @Test

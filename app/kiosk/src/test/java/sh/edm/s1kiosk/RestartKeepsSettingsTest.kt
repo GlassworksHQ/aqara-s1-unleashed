@@ -40,7 +40,8 @@ class RestartKeepsSettingsTest {
         GlassworksRuntime(AqaraS1Plus()).paneDefinitions(ctx).mapNotNull { d -> d.switch?.let { d.id to it.on } }.toMap()
 
     private val allOff = mapOf(
-        "assist" to false, "sendspin" to false, "bluetooth-proxy" to false, "wall-base" to false, "time-zone" to false, "diagnostics" to false,
+        "assist" to false, "sendspin" to false, "notifications" to false, "bluetooth-proxy" to false, "wall-base" to false,
+        "time-zone" to false, "diagnostics" to false,
     )
 
     private fun definitions(ctx: Context): List<PaneDefinition> = GlassworksRuntime(AqaraS1Plus()).paneDefinitions(ctx)
@@ -61,9 +62,12 @@ class RestartKeepsSettingsTest {
         val ctx = process()
         // The radio's card is its mode, kept by the radio controller: the cards that are pane switches.
         val cards = definitions(ctx).filter { it.switch != null && it.setupChoice != null }
-        assertEquals(listOf("assist", "sendspin", "wall-base"), cards.map { it.id })
+        assertEquals(listOf("assist", "sendspin", "notifications", "wall-base"), cards.map { it.id })
         cards.forEach { it.setupChoice!!.apply(false) }
-        assertEquals(mapOf("assist" to false, "sendspin" to false, "wall-base" to false), switches(process()).filterKeys { it in cards.map { c -> c.id } })
+        assertEquals(mapOf("assist" to false, "sendspin" to false, "notifications" to false, "wall-base" to false), switches(process()).filterKeys { it in cards.map { c -> c.id } })
+        // Notifications starts off: turned on on the Panes step, it stays on too.
+        definitions(process()).first { it.id == "notifications" }.setupChoice!!.apply(true)
+        assertEquals(true, switches(process())["notifications"])
     }
 
     @Test fun aPaneTurnedOffFromHomeAssistantStaysOffAfterARestart() {
@@ -78,7 +82,7 @@ class RestartKeepsSettingsTest {
     @Test fun aPaneTurnedOffWithAnExtraThenRestartedStaysOff() {
         val ctx = process()
         val intent = Intent().putExtra("restart", true)
-        listOf("voice_enabled", "sendspin_enabled", "bluetooth_proxy_enabled", "wall_base_enabled", "time_zone_enabled", "diagnostics_enabled")
+        listOf("voice_enabled", "sendspin_enabled", "notifications_enabled", "bluetooth_proxy_enabled", "wall_base_enabled", "time_zone_enabled", "diagnostics_enabled")
             .forEach { intent.putExtra(it, false) }
         definitions(ctx).intentExtras().applyFrom(intent)
         assertEquals(allOff, switches(process()))

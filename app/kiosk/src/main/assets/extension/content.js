@@ -233,6 +233,27 @@
     if (m && m.type === "config") { cfg = Object.assign(cfg, m.config); apply(); }
   });
 
+  // ---- Notifications (#118): open a Home Assistant view in place ---------------------------------
+  // As the frontend's own navigate() does (history.pushState, then "location-changed"), so the S1
+  // doesn't load the whole frontend again for a doorbell view and again for the way back. Only on this
+  // page's own origin; the app checked the URL already (HaUrls). The app opens a notification's view
+  // and goes back with `replace`, so the view doesn't stay in the history for Back to find later.
+  portListeners.push((m) => {
+    if (!m || m.type !== "navigate" || window !== window.top) return;
+    let target;
+    try { target = new URL(m.url, location.href); } catch (e) { return; }
+    if (target.origin !== location.origin) return;
+    const path = target.pathname + target.search + target.hash;
+    if (document.querySelector("home-assistant")) {
+      if (m.replace) history.replaceState(null, "", path); else history.pushState(null, "", path);
+      window.dispatchEvent(new CustomEvent("location-changed"));
+    } else if (m.replace) {
+      location.replace(path);
+    } else {
+      location.assign(path);
+    }
+  });
+
   // ---- Lovelace dashboards for the panel's ESPHome "Dashboard" select ------------------------------
   // Asked through the page's own HA connection (`hass.callWS`), so it works with the cookie session
   // and with external auth alike. Sent fire-and-forget on the port as a JSON string (no GeckoBundle

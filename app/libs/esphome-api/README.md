@@ -61,6 +61,10 @@ ESPHome device. Package `sh.edm.esphome`, MIT licensed.
 - **Actions:** user-defined actions that Home Assistant calls as `esphome.<node>_<action>`, with
   bool, int, float and string arguments and their lists. An action can return JSON to the caller
   or fail with a message.
+- **Events on Home Assistant's bus:** `sendHomeAssistantEvent(HomeAssistantEvent("esphome.<name>", data))`
+  fires an event, as ESPHome's `homeassistant.event` does. HA allows only the `esphome.` domain and
+  needs no option for it. Use it when an event entity can't: HA refuses event types an event entity
+  didn't list up front.
 - **Camera:** a camera entity that serves JPEG frames, one at a time or as the stream HA's
   more-info dialog shows. Images go out in chunks, so states and pings keep flowing meanwhile.
 - **Voice assistant:** the messages are wired through `VoiceAssistantHandler`: start and stop, API
@@ -174,7 +178,7 @@ checks the library's classes, and the BouncyCastle classes they reach, against A
 cd app && ./gradlew :esphome-api:test
 ```
 
-`EspHomeKeepaliveTest` and `EspHomeActionsCameraTest` run the real `aioesphomeapi` client when
+`EspHomeKeepaliveTest`, `EspHomeActionsCameraTest` and `EspHomeHaEventTest` run the real `aioesphomeapi` client when
 `ESPHOME_PYTHON` points at a Python with it installed. They are skipped otherwise. PR CI installs it from
 [`test-requirements.txt`](test-requirements.txt) (locked with hashes) and fails if one of them skipped:
 

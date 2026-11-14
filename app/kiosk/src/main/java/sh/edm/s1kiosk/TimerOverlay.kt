@@ -16,6 +16,7 @@ import android.view.View
 import android.view.ViewConfiguration
 import android.view.animation.PathInterpolator
 import android.widget.FrameLayout
+import kotlin.math.hypot
 import sh.edm.s1kiosk.timers.Anchor
 import sh.edm.s1kiosk.timers.DockMath
 import sh.edm.s1kiosk.timers.DockState
@@ -23,7 +24,7 @@ import sh.edm.s1kiosk.timers.Edge
 import sh.edm.s1kiosk.timers.RingView
 import sh.edm.s1kiosk.timers.TimerDoneView
 import sh.edm.s1kiosk.ui.Inter
-import kotlin.math.hypot
+import sh.edm.s1kiosk.voice.OrbBakes
 
 /**
  * Voice timers on screen (0.4.3, direction B; mock-ups in aqara-panel-backups/mockups/0.4.3-timers):
@@ -37,7 +38,11 @@ import kotlin.math.hypot
  *
  * Under the voice overlay (elevation 12 dp < 16 dp). Main thread only.
  */
-class TimerOverlay(context: Context) : FrameLayout(context) {
+class TimerOverlay(
+    context: Context,
+    /** The orb layers the timer-done stage shares with the critical alert (#118). */
+    orbs: OrbBakes = OrbBakes(),
+) : FrameLayout(context) {
 
     private val dp = resources.displayMetrics.density
     private val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -49,7 +54,7 @@ class TimerOverlay(context: Context) : FrameLayout(context) {
     private val dock = Dock(context)
     private val chip = HideChip(context)
     private val peek = Peek(context)
-    private val done = TimerDoneView(context)
+    private val done = TimerDoneView(context, orbs)
 
     private val rings = LinkedHashMap<String, RingView>()
     /** Timers set while the voice overlay is up: they appear when it goes. */

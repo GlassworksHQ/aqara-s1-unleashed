@@ -10,6 +10,7 @@ import sh.edm.bluetoothproxy.BleScanner
 import sh.edm.bluetoothproxy.ScanFailure
 import sh.edm.bluetoothproxy.ScanPower
 import dev.glassworks.diagnostics.DiagnosticsPrefs
+import dev.glassworks.notifications.NotificationsPrefs
 import android.app.Application
 import android.content.SharedPreferences
 import dev.glassworks.pane.Pane
@@ -62,6 +63,7 @@ class PanePrefsTest {
     private val owners: Map<String, (SharedPreferences) -> Any> = mapOf(
         "sendspin" to ::SendspinPrefs, "assist" to ::VoicePrefs, "wall-base" to ::WallBasePrefs, "radio" to ::RadioPrefs,
         "time-zone" to ::TimeZonePrefs, "diagnostics" to ::DiagnosticsPrefs, "bluetooth-proxy" to ::BluetoothProxyPrefs,
+        "notifications" to ::NotificationsPrefs,
     )
 
     @After fun tearDown() {

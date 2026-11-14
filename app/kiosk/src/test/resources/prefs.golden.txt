@@ -29,6 +29,8 @@ kiosk|min_brightness|Float|0.1
 kiosk|night_idle_off_sec|Int|20
 kiosk|night_max_brightness|Float|0.2
 kiosk|night_window|String|"22:00-07:00"
+kiosk|notifications_dnd|Boolean|false
+kiosk|notifications_enabled|Boolean|false
 kiosk|presence_range_m|Float|0.0
 kiosk|radio_allow|String|""
 kiosk|radio_ha_ipv4|String|null

@@ -76,6 +76,16 @@ export const PANE_FILES: readonly PaneInfo[] = [
     "source": "app/kiosk/src/main/java/dev/glassworks/diagnostics"
   },
   {
+    "id": "notifications",
+    "name": "Notifications",
+    "does": "Home Assistant's notifications over the dashboard, with a picture, buttons and a sound.",
+    "requires": [],
+    "status": "alpha",
+    "docs": "docs/notifications.md",
+    "icon": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 1.5h-15z\"/><path d=\"M10 20.5a2 2 0 0 0 4 0\"/></svg>",
+    "source": "app/kiosk/src/main/java/dev/glassworks/notifications"
+  },
+  {
     "id": "time-zone",
     "name": "Time zone",
     "does": "Keeps the time zone Aqara resets at every boot.",

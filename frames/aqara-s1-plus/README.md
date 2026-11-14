@@ -89,6 +89,7 @@ announcements, with a calm full-screen overlay while you talk.
 |---|---|
 | 🏠 **One ESPHome device** | HA discovers the panel and sets up encryption automatically. You get the screen as a light, presence, light level, a speaker, voice settings and the wall base, plus the dashboard and radio controls. [The entities](../../docs/esphome.md) |
 | 🎵 **Music Assistant player** | A native Sendspin player that plays in sync with your other speakers. [Sendspin guide](../../docs/sendspin.md) |
+| 🔔 **Notifications** | HA sends a notification and the panel shows it over the dashboard, with a camera's picture, buttons and a sound. It can also open a dashboard view full screen, like a doorbell's. [Notifications guide](../../docs/notifications.md) |
 | 👋 **Wakes when you walk up** | The screen wakes as you approach, turns off when the room is empty, and dims at night. It is driven by the panel's own sensors. [Sensors guide](../../docs/sensors.md) |
 | 📡 **Radio for Home Assistant** | The panel's Zigbee/Thread radio can be a Zigbee coordinator for ZHA or (experimental) Zigbee2MQTT, a Thread border router, or a repeater in your existing network. You switch roles from HA. [How to](../../docs/radio-guide.md) |
 | 🔄 **Updates in Home Assistant** | New versions show up under *Settings → Updates*, and one click installs them. Fixes for the radio side come with them. [Updates](#updates) |
@@ -115,6 +116,7 @@ the next one. "Verified" means tested on a real panel in a real home.
 | ESPHome device with automatic encryption | ✅ Works |
 | Voice assistant with on-device wake word, timers, announcements | ✅ Works · far-field tuning ongoing |
 | Music Assistant player (Sendspin, synced) | ✅ Works |
+| Notifications from HA: cards, pictures, buttons, sounds, a view full screen ([how](../../docs/notifications.md)) | 🧪 New · first run on the S1 2026-11-14 (cards, pictures, buttons, Do not disturb, a view full screen); the critical alert's rerun pending |
 | Presence wake, idle-off, night mode, auto-brightness | ✅ Works |
 | Aqara cloud and bloat disabled (reversible) | ✅ Works |
 | Boot splash and animation | 🧪 The Glassworks redraw has not yet run on a panel. The Glass Tile one before it works |
@@ -392,6 +394,7 @@ browser, the radio and the wall base protocol: it's all written up in
 | Time zone | Beta | Worked out: needs no special hardware. |
 | Diagnostics | Alpha | Worked out: needs no special hardware. Not yet checked on a panel. |
 | Bluetooth proxy | Alpha | Worked out: has Bluetooth LE. Its engine met the S1 (2026-11-14); the pane itself not yet. |
+| Notifications | Alpha | Worked out: needs no special hardware (the speaker plays its sounds). First run on the S1 2026-11-14; the critical alert's rerun pending. |
 | Wall base | Alpha | The driver passes against an emulator that Aqara's own `bracket_cli` accepts. It has not yet been tried on a real base ([base-protocol.md](research/base-protocol.md), [bases.md](research/bases.md)). |
 
 "Worked out" means `frame.json` doesn't rate the pane; its support comes from what the pane needs and what the frame has ([how](../README.md#the-panes-a-frame-runs)).

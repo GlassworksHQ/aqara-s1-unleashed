@@ -22,6 +22,7 @@ cpu_usage|-1945155459|SensorEntity|CPU usage|mdi:cpu-32-bit||DIAGNOSTIC|authOnly
 dashboard|-457110565|SelectEntity|Dashboard|mdi:view-dashboard||CONFIG|authOnly=false|options=Default,Custom|eventTypes=|disabledByDefault
 dashboard_url|-228981371|TextEntity|Dashboard URL|mdi:web||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
 diagnostics|-377449481|SwitchEntity|Diagnostics|mdi:stethoscope||CONFIG|authOnly=true|options=|eventTypes=|disabledByDefault
+do_not_disturb|-1712049842|SwitchEntity|Do not disturb|mdi:bell-off-outline||CONFIG|authOnly=false|options=|eventTypes=
 hide_ha_header|208075011|SwitchEntity|Hide HA header|mdi:page-layout-header||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
 home_assistant_url|-1466418685|TextSensorEntity|Home Assistant URL|mdi:home-assistant||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
 idle_timeout|681270463|NumberEntity|Idle timeout|mdi:timer-outline|duration|CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
@@ -35,6 +36,8 @@ mic_gain|456212070|NumberEntity|Mic gain|mdi:microphone-plus||CONFIG|authOnly=fa
 mute_microphone|-858890227|SwitchEntity|Mute microphone|mdi:microphone-off||CONFIG|authOnly=false|options=|eventTypes=
 night_idle_timeout|1514960004|NumberEntity|Night idle timeout|mdi:timer-sand|duration|CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
 night_window|-628240202|TextEntity|Night window|mdi:weather-night||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
+notifications|-212671633|SwitchEntity|Notifications|mdi:bell-outline||CONFIG|authOnly=true|options=|eventTypes=|disabledByDefault
+notify|-1603436996|ApiAction|notify|||NONE|authOnly=false|options=|eventTypes=
 open_settings|-1613451641|ButtonEntity|Open device settings|mdi:cog||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
 presence|-1932308604|BinarySensorEntity|Presence||occupancy|NONE|authOnly=false|options=|eventTypes=
 presence_range|964203534|NumberEntity|Presence range|mdi:signal-distance-variant|distance|CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
@@ -101,6 +104,7 @@ cpu_usage|-1945155459|SensorEntity|CPU usage|mdi:cpu-32-bit||DIAGNOSTIC|authOnly
 dashboard|-457110565|SelectEntity|Dashboard|mdi:view-dashboard||CONFIG|authOnly=false|options=Default,Custom|eventTypes=|disabledByDefault
 dashboard_url|-228981371|TextEntity|Dashboard URL|mdi:web||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
 diagnostics|-377449481|SwitchEntity|Diagnostics|mdi:stethoscope||CONFIG|authOnly=true|options=|eventTypes=|disabledByDefault
+do_not_disturb|-1712049842|SwitchEntity|Do not disturb|mdi:bell-off-outline||CONFIG|authOnly=false|options=|eventTypes=
 hide_ha_header|208075011|SwitchEntity|Hide HA header|mdi:page-layout-header||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
 home_assistant_url|-1466418685|TextSensorEntity|Home Assistant URL|mdi:home-assistant||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
 idle_timeout|681270463|NumberEntity|Idle timeout|mdi:timer-outline|duration|CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
@@ -114,6 +118,8 @@ mic_gain|456212070|NumberEntity|Mic gain|mdi:microphone-plus||CONFIG|authOnly=fa
 mute_microphone|-858890227|SwitchEntity|Mute microphone|mdi:microphone-off||CONFIG|authOnly=false|options=|eventTypes=
 night_idle_timeout|1514960004|NumberEntity|Night idle timeout|mdi:timer-sand|duration|CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
 night_window|-628240202|TextEntity|Night window|mdi:weather-night||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
+notifications|-212671633|SwitchEntity|Notifications|mdi:bell-outline||CONFIG|authOnly=true|options=|eventTypes=|disabledByDefault
+notify|-1603436996|ApiAction|notify|||NONE|authOnly=false|options=|eventTypes=
 open_settings|-1613451641|ButtonEntity|Open device settings|mdi:cog||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
 presence|-1932308604|BinarySensorEntity|Presence||occupancy|NONE|authOnly=false|options=|eventTypes=
 presence_range|964203534|NumberEntity|Presence range|mdi:signal-distance-variant|distance|CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
@@ -182,6 +188,7 @@ cpu_usage|-1945155459|SensorEntity|CPU usage|mdi:cpu-32-bit||DIAGNOSTIC|authOnly
 dashboard|-457110565|SelectEntity|Dashboard|mdi:view-dashboard||CONFIG|authOnly=false|options=Default,Custom|eventTypes=|disabledByDefault
 dashboard_url|-228981371|TextEntity|Dashboard URL|mdi:web||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
 diagnostics|-377449481|SwitchEntity|Diagnostics|mdi:stethoscope||CONFIG|authOnly=true|options=|eventTypes=|disabledByDefault
+do_not_disturb|-1712049842|SwitchEntity|Do not disturb|mdi:bell-off-outline||CONFIG|authOnly=false|options=|eventTypes=
 hide_ha_header|208075011|SwitchEntity|Hide HA header|mdi:page-layout-header||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
 home_assistant_url|-1466418685|TextSensorEntity|Home Assistant URL|mdi:home-assistant||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
 idle_timeout|681270463|NumberEntity|Idle timeout|mdi:timer-outline|duration|CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
@@ -195,6 +202,8 @@ mic_gain|456212070|NumberEntity|Mic gain|mdi:microphone-plus||CONFIG|authOnly=fa
 mute_microphone|-858890227|SwitchEntity|Mute microphone|mdi:microphone-off||CONFIG|authOnly=false|options=|eventTypes=
 night_idle_timeout|1514960004|NumberEntity|Night idle timeout|mdi:timer-sand|duration|CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
 night_window|-628240202|TextEntity|Night window|mdi:weather-night||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
+notifications|-212671633|SwitchEntity|Notifications|mdi:bell-outline||CONFIG|authOnly=true|options=|eventTypes=|disabledByDefault
+notify|-1603436996|ApiAction|notify|||NONE|authOnly=false|options=|eventTypes=
 open_settings|-1613451641|ButtonEntity|Open device settings|mdi:cog||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
 presence|-1932308604|BinarySensorEntity|Presence||occupancy|NONE|authOnly=false|options=|eventTypes=
 presence_range|964203534|NumberEntity|Presence range|mdi:signal-distance-variant|distance|CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
@@ -254,6 +263,7 @@ cpu_usage|-1945155459|SensorEntity|CPU usage|mdi:cpu-32-bit||DIAGNOSTIC|authOnly
 dashboard|-457110565|SelectEntity|Dashboard|mdi:view-dashboard||CONFIG|authOnly=false|options=Default,Custom|eventTypes=|disabledByDefault
 dashboard_url|-228981371|TextEntity|Dashboard URL|mdi:web||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
 diagnostics|-377449481|SwitchEntity|Diagnostics|mdi:stethoscope||CONFIG|authOnly=true|options=|eventTypes=|disabledByDefault
+do_not_disturb|-1712049842|SwitchEntity|Do not disturb|mdi:bell-off-outline||CONFIG|authOnly=false|options=|eventTypes=
 hide_ha_header|208075011|SwitchEntity|Hide HA header|mdi:page-layout-header||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
 home_assistant_url|-1466418685|TextSensorEntity|Home Assistant URL|mdi:home-assistant||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
 idle_timeout|681270463|NumberEntity|Idle timeout|mdi:timer-outline|duration|CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
@@ -267,6 +277,8 @@ mic_gain|456212070|NumberEntity|Mic gain|mdi:microphone-plus||CONFIG|authOnly=fa
 mute_microphone|-858890227|SwitchEntity|Mute microphone|mdi:microphone-off||CONFIG|authOnly=false|options=|eventTypes=
 night_idle_timeout|1514960004|NumberEntity|Night idle timeout|mdi:timer-sand|duration|CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
 night_window|-628240202|TextEntity|Night window|mdi:weather-night||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
+notifications|-212671633|SwitchEntity|Notifications|mdi:bell-outline||CONFIG|authOnly=true|options=|eventTypes=|disabledByDefault
+notify|-1603436996|ApiAction|notify|||NONE|authOnly=false|options=|eventTypes=
 open_settings|-1613451641|ButtonEntity|Open device settings|mdi:cog||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
 presence|-1932308604|BinarySensorEntity|Presence||occupancy|NONE|authOnly=false|options=|eventTypes=
 presence_range|964203534|NumberEntity|Presence range|mdi:signal-distance-variant|distance|CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
@@ -326,6 +338,7 @@ cpu_usage|-1945155459|SensorEntity|CPU usage|mdi:cpu-32-bit||DIAGNOSTIC|authOnly
 dashboard|-457110565|SelectEntity|Dashboard|mdi:view-dashboard||CONFIG|authOnly=false|options=Default,Custom|eventTypes=|disabledByDefault
 dashboard_url|-228981371|TextEntity|Dashboard URL|mdi:web||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
 diagnostics|-377449481|SwitchEntity|Diagnostics|mdi:stethoscope||CONFIG|authOnly=true|options=|eventTypes=|disabledByDefault
+do_not_disturb|-1712049842|SwitchEntity|Do not disturb|mdi:bell-off-outline||CONFIG|authOnly=false|options=|eventTypes=
 hide_ha_header|208075011|SwitchEntity|Hide HA header|mdi:page-layout-header||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
 home_assistant_url|-1466418685|TextSensorEntity|Home Assistant URL|mdi:home-assistant||DIAGNOSTIC|authOnly=false|options=|eventTypes=|disabledByDefault
 idle_timeout|681270463|NumberEntity|Idle timeout|mdi:timer-outline|duration|CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
@@ -339,6 +352,8 @@ mic_gain|456212070|NumberEntity|Mic gain|mdi:microphone-plus||CONFIG|authOnly=fa
 mute_microphone|-858890227|SwitchEntity|Mute microphone|mdi:microphone-off||CONFIG|authOnly=false|options=|eventTypes=
 night_idle_timeout|1514960004|NumberEntity|Night idle timeout|mdi:timer-sand|duration|CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
 night_window|-628240202|TextEntity|Night window|mdi:weather-night||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
+notifications|-212671633|SwitchEntity|Notifications|mdi:bell-outline||CONFIG|authOnly=true|options=|eventTypes=|disabledByDefault
+notify|-1603436996|ApiAction|notify|||NONE|authOnly=false|options=|eventTypes=
 open_settings|-1613451641|ButtonEntity|Open device settings|mdi:cog||CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault
 presence|-1932308604|BinarySensorEntity|Presence||occupancy|NONE|authOnly=false|options=|eventTypes=
 presence_range|964203534|NumberEntity|Presence range|mdi:signal-distance-variant|distance|CONFIG|authOnly=false|options=|eventTypes=|disabledByDefault

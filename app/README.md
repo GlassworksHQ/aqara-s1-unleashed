@@ -90,6 +90,9 @@ current Home Assistant frontend. GeckoView ships its own up-to-date engine insid
 - **Native Music Assistant player (Sendspin)**: MA sees the panel as its own player "Glassworks Panel" and plays
   to it in sync with your other Sendspin speakers (groupable). It pairs automatically: HA hands MA the
   panel's pairing token over the ESPHome API. See below and [docs/sendspin.md](../docs/sendspin.md).
+- **Notifications from Home Assistant**: `esphome.s1_panel_notify` shows a card over the dashboard
+  (picture, up to three buttons, a sound), or opens a dashboard view full screen; a button press fires
+  `esphome.notification_action` in HA. Off by default. See [docs/notifications.md](../docs/notifications.md).
 - **Wi-Fi setup over Bluetooth (Improv via BLE)**: a panel with no network (30 s after boot), or one
   told to (`--ez improv true` / the HA button "Start Wi-Fi setup (Bluetooth)"), advertises the Improv
   service for 10 minutes, so HA's `improv_ble` integration or improv-wifi.com can send it Wi-Fi
@@ -170,6 +173,7 @@ $A --es wake_model okay_nabu --ef wake_threshold 0.9 --ef mic_gain 2.0 --ez mic_
 $A --es api_key $(openssl rand -base64 32) --ez api_encryption true   # manual ESPHome API key (HA normally provisions one)
 $A --ez voice_enabled false           # each pane on/off, applied live (default on): voice_enabled, sendspin_enabled,
                                       #   wall_base_enabled, time_zone_enabled, diagnostics_enabled
+$A --ez notifications_enabled true    # notifications on/off, applied live (default off; docs/notifications.md)
 $A --ez bluetooth_proxy_enabled true  # the Bluetooth proxy on/off (default off)
 $A --ez sendspin_enabled false        # Music Assistant player (Sendspin) off/on (default on)
 $A --es sendspin_server 192.168.1.100 # Sendspin server: auto (default: mDNS, else <HA host>:8927) or host[:port][/path] / ws://

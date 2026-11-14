@@ -280,6 +280,21 @@ class ApiServer(
         return sent
     }
 
+    /**
+     * Fires [event] on Home Assistant's event bus (ESPHome's `homeassistant.event`), on every connection
+     * that asked for them with `SubscribeHomeassistantServicesRequest`; Home Assistant asks on each
+     * connection. Queued like the states, on the connection's writer. True when at least one took it.
+     */
+    fun sendHomeAssistantEvent(event: HomeAssistantEvent): Boolean {
+        val frame = Frame(Msg.HOMEASSISTANT_ACTION_REQUEST, event.encode().toByteArray())
+        var sent = false
+        synchronized(stateLock) {
+            for (c in connections) if (c.subscribedHaServices) sent = c.send(listOf(frame)) || sent
+        }
+        if (!sent) EspHomeLog.w("${event.event}: no Home Assistant connection subscribed to events")
+        return sent
+    }
+
     @Throws(IOException::class)
     fun start() {
         val ss = newServerSocket()
@@ -461,6 +476,8 @@ class ApiServer(
         private val outbox = Outbox(MAX_QUEUED_BYTES)
         private lateinit var transport: FrameTransport
         @Volatile var subscribedStates = false
+        /** Sent `SubscribeHomeassistantServicesRequest`: takes [sendHomeAssistantEvent]'s events. */
+        @Volatile var subscribedHaServices = false
         @Volatile var isOpen = true
         /** HelloRequest.client_info ("" until the Hello). */
         @Volatile var clientInfo = ""
@@ -582,6 +599,7 @@ class ApiServer(
         /** Server-initiated disconnect (entity set changed): ask, then close after the ack or 2 s. */
         fun requestDisconnect() {
             subscribedStates = false
+            subscribedHaServices = false
             if (!reply(Msg.DISCONNECT_REQUEST)) { close(); return }
             Thread({
                 try { Thread.sleep(2_000) } catch (_: InterruptedException) {}
@@ -594,6 +612,7 @@ class ApiServer(
             if (retired) return
             retired = true
             subscribedStates = false
+            subscribedHaServices = false
             if (voiceConn === this) {
                 voiceConn = null
                 voice?.onSubscribe(false)
@@ -671,6 +690,7 @@ class ApiServer(
                         Frame(Msg.LIST_ENTITIES_DONE, ByteArray(0))
                     send(frames)
                 }
+                Msg.SUBSCRIBE_HA_SERVICES_REQUEST -> subscribedHaServices = true
                 BluetoothMsg.SUBSCRIBE_LE_ADVERTISEMENTS_REQUEST -> subscribeBluetooth(this)
                 BluetoothMsg.UNSUBSCRIBE_LE_ADVERTISEMENTS_REQUEST -> unsubscribeBluetooth(this)
                 Msg.SUBSCRIBE_STATES_REQUEST -> {

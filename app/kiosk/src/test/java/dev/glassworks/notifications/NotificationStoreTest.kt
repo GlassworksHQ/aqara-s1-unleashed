@@ -138,4 +138,24 @@ class NotificationStoreTest {
         assertTrue(p.dropped.isEmpty())
         assertEquals(listOf("washer"), one.list().map { it.notification.title })
     }
+
+    /** Verifier carry-over, decided: a held one has no fold time, so opened from the list it stays until closed. */
+    @Test
+    fun aHeldOneStaysOnceOpened() {
+        for (p in listOf(Priority.LOW, Priority.NORMAL, Priority.HIGH)) assertNull(Delivery.of(p, doNotDisturb = true).foldAfterS)
+        val e = store.post(n("quiet"), doNotDisturb = true).entry
+        assertNull(store.show(e.id)!!.delivery.foldAfterS)
+    }
+
+    /** Root decision on #228: Do not disturb turned on holds what's up as it would hold it arriving; critical stays. */
+    @Test
+    fun doNotDisturbOnHoldsWhatIsUpButCritical() {
+        val high = store.post(n("garage", p = Priority.HIGH), false).entry
+        val fire = store.post(n("fire", p = Priority.CRITICAL), false).entry
+        assertTrue(store.holdForDoNotDisturb())
+        assertTrue(store.list().first { it.id == high.id }.held)
+        assertFalse(store.list().first { it.id == fire.id }.held)
+        assertEquals(listOf("fire"), store.cards().map { it.notification.title })
+        assertFalse("nothing more to hold", store.holdForDoNotDisturb())
+    }
 }

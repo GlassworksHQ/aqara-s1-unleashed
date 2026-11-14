@@ -1,0 +1,92 @@
+# Glassworks: ring the panels when the doorbell rings (#118). See docs/notifications.md#the-doorbell.
+# Not yet run with a real doorbell (2026-11-13).
+blueprint:
+  name: Doorbell on Glassworks panels
+  description: >-
+    When the doorbell rings, the chosen panels ring, show the door's dashboard view full screen and
+    the camera's picture. A "Done" button on that view should run the clear script below, so every
+    panel stops ringing.
+  domain: automation
+  input:
+    doorbell:
+      name: Doorbell
+      description: The doorbell's event entity, or a binary sensor that turns on when it rings.
+      selector:
+        entity:
+          filter:
+            - domain: event
+            - domain: binary_sensor
+    panels:
+      name: The panels' notify actions
+      description: >-
+        One per panel: esphome., the panel's ESPHome name with - as _, then _notify. The S1's name is
+        s1-panel, so esphome.s1_panel_notify; a panel named hall-panel is esphome.hall_panel_notify.
+        Developer tools → Actions lists them (search for "_notify").
+      selector:
+        text:
+          multiple: true
+    camera:
+      name: Door camera
+      selector:
+        entity:
+          filter:
+            - domain: camera
+    view:
+      name: The door's dashboard view
+      description: A path on this Home Assistant.
+      default: /dashboard-door/0
+      selector:
+        text:
+    timeout:
+      name: Back to the normal dashboard after
+      default: 90
+      selector:
+        number:
+          min: 15
+          max: 600
+          unit_of_measurement: s
+
+mode: single
+max_exceeded: silent
+
+variables:
+  camera: !input camera
+  view: !input view
+  timeout: !input timeout
+
+triggers:
+  - trigger: state
+    entity_id: !input doorbell
+    # Not when it goes away or comes back: only a real ring.
+    not_from: [unknown, unavailable]
+    not_to: [unknown, unavailable]
+
+conditions:
+  # An event entity changes state on every ring; a binary sensor only counts when it turns on.
+  - condition: template
+    value_template: "{{ trigger.to_state.domain == 'event' or trigger.to_state.state == 'on' }}"
+
+actions:
+  - repeat:
+      for_each: !input panels
+      sequence:
+        - action: "{{ repeat.item }}"
+          continue_on_error: true
+          data:
+            title: Doorbell
+            message: Someone is at the door
+            data: >-
+              {{ {'tag': 'doorbell', 'priority': 'high', 'sound': 'doorbell', 'url': view,
+                  'timeout': timeout | int, 'image': '/api/camera_proxy/' ~ camera} | to_json }}
+
+# The "Done" button's script (a script, not part of the blueprint):
+#
+# script:
+#   doorbell_done:
+#     sequence:
+#       - repeat:
+#           for_each: [esphome.kitchen_panel_notify, esphome.hall_panel_notify]  # your panels
+#           sequence:
+#             - action: "{{ repeat.item }}"
+#               continue_on_error: true
+#               data: {message: clear_notification, title: "", data: '{"tag": "doorbell"}'}

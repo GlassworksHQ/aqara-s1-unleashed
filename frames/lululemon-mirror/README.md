@@ -81,6 +81,7 @@ Check before flashing: fastboot must report MSM8916 and the expected partition s
 | Time zone | No | Worked out: only on the S1 (`aqara-s1-plus`). |
 | Diagnostics | Planned | Worked out: needs no special hardware. |
 | Bluetooth proxy | Planned | Worked out: has Bluetooth LE (its WCN3660B, read from a teardown). |
+| Notifications | Planned | Worked out: needs no special hardware. |
 | Wall base | No | S1 only. |
 
 "Worked out" means `frame.json` doesn't rate the pane; its support comes from what the pane needs and what the frame has ([how](../README.md#the-panes-a-frame-runs)).

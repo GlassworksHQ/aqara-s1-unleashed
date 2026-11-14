@@ -35,6 +35,7 @@ import dev.glassworks.frame.systemSettings
 import sh.edm.s1kiosk.dashboard.DashboardOptions
 import sh.edm.s1kiosk.dashboard.Dashboards
 import sh.edm.s1kiosk.discovery.HaUrls
+import sh.edm.s1kiosk.notifications.NotificationOverlay
 import sh.edm.s1kiosk.settings.CoreSettings
 import sh.edm.s1kiosk.settings.KioskSettingsOverlay
 import sh.edm.s1kiosk.settings.SettingsMenu
@@ -62,6 +63,7 @@ class MainActivity : Activity() {
     private lateinit var settingsOverlay: KioskSettingsOverlay
     private lateinit var voiceOverlay: VoiceOverlay
     private lateinit var timerOverlay: TimerOverlay
+    private lateinit var notificationOverlay: NotificationOverlay
     private lateinit var threadJoinOverlay: sh.edm.s1kiosk.setup.ThreadJoinOverlay
     private lateinit var setupOverlay: SetupOverlay
     private lateinit var wifiStatus: WifiSetupStatus
@@ -185,7 +187,12 @@ class MainActivity : Activity() {
             onCancel = { glassworks.voiceCancel?.invoke() }
             onShowingChanged = { timerOverlay.voiceShowing(it) } // a timer set by voice flies out of the orb
         }
-        timerOverlay = TimerOverlay(this)
+        timerOverlay = TimerOverlay(this, glassworks.orbs)
+        notificationOverlay = NotificationOverlay(this, glassworks.notifications, notificationImages(), orbs = glassworks.orbs).apply {
+            screenOn = { glassworks.screen.screenOn }
+            onPage = { url -> if (url != null) openInPage(url) else backToDashboard() }
+            onDoNotDisturb = { on -> prefs.notifications.doNotDisturb = on }
+        }
         setupOverlay = SetupOverlay(this, setupPanes).apply {
             onUsePanel = ::onUsePanelLogin
             onManualUrl = ::onManualHaUrl
@@ -209,6 +216,7 @@ class MainActivity : Activity() {
             addView(setupOverlay, android.widget.FrameLayout.LayoutParams(-1, -1))
             // Z order (elevation): setup 20 dp > voice 16 dp > timers 12 dp > page.
             addView(timerOverlay, timerOverlay.layoutParams())
+            addView(notificationOverlay, android.widget.FrameLayout.LayoutParams(-1, -1)) // 14 dp: over timers, under voice
             addView(voiceOverlay, android.widget.FrameLayout.LayoutParams(-1, -1))
             addView(settingsOverlay, android.widget.FrameLayout.LayoutParams(-1, -1)) // 24 dp
             addView(threadJoinOverlay, android.widget.FrameLayout.LayoutParams(-1, -1)) // 26 dp: above everything
@@ -239,9 +247,18 @@ class MainActivity : Activity() {
                 screenBrightness = if (b < 0f) WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE else b
             }
         }
+        glassworks.notifications.addListener(notificationListener)
+        glassworks.notifications.onOpenList = {
+            handler.post {
+                if (settingsOverlay.isShowing) settingsOverlay.hide()
+                notificationOverlay.openList()
+            }
+        }
+        glassworks.notifications.onReveal = { handler.post { if (settingsOverlay.isShowing) settingsOverlay.hide() } }
         glassworks.screen.onStateChanged = {
             pushState()
             timerOverlay.refresh()
+            notificationOverlay.update(glassworks.notifications.state)
         }
         glassworks.onVoiceUi = { voiceOverlay.update(glassworks.voiceUi, prefs.voice.overlay) }
         glassworks.commandSink = { applyIntent(it, fromNewIntent = true) }
@@ -280,6 +297,50 @@ class MainActivity : Activity() {
     }
 
     private var dashboardLoadAt = 0L
+
+    // ---- notifications (#118): the overlay, a view full screen and the way back
+
+    private val notificationListener: (dev.glassworks.notifications.NotificationsHub.State) -> Unit = { s ->
+        handler.post { if (::notificationOverlay.isInitialized) notificationOverlay.update(s) }
+    }
+
+    /** Where the page was before a notification opened a view full screen. */
+    private var beforeNotificationPage: String? = null
+
+    /** A notification's view, on the panel's own HA: in place when the frontend is already up, else loaded. */
+    private fun openInPage(url: String) {
+        if (beforeNotificationPage == null) beforeNotificationPage = currentUrl
+        Log.i(TAG, "Notification: opening a view full screen")
+        if (FrontendUrls.sameOrigin(currentUrl, url)) page?.post(navigate(url))
+        else page?.load(externalize(url))
+    }
+
+    /** The view closed (timeout, Back now, clear_notification): back where the panel was. */
+    private fun backToDashboard() {
+        val back = beforeNotificationPage ?: return
+        beforeNotificationPage = null
+        if (FrontendUrls.sameOrigin(currentUrl, back)) page?.post(navigate(back))
+        else loadDashboard()
+    }
+
+    /** In place, replacing the history entry: dashboard → view → dashboard leaves one entry, not three. */
+    private fun navigate(url: String) = JSONObject().put("type", "navigate").put("url", url).put("replace", true)
+
+    /**
+     * Pictures from the panel's own HA, with the dashboard's sign-in. Only when that sign-in belongs to
+     * the same HA, so the token never goes to another host.
+     */
+    private fun notificationImages() = dev.glassworks.notifications.HaImages(
+        haBase = { prefs.haBase },
+        token = token@{
+            if (!HaAuth.signedIn || !FrontendUrls.sameOrigin(HaAuth.signedInBase, prefs.haBase)) return@token null
+            val done = java.util.concurrent.CountDownLatch(1)
+            var token: String? = null
+            HaAuth.accessToken(force = false) { a -> token = (a as? HaAuth.Access.Ok)?.accessToken; done.countDown() }
+            done.await(10, java.util.concurrent.TimeUnit.SECONDS)
+            token
+        },
+    )
 
     private fun externalize(url: String): String =
         if (HaAuth.signedIn && FrontendUrls.sameOrigin(url, HaAuth.signedInBase)) FrontendUrls.withFlag(url) else url
@@ -816,6 +877,7 @@ class MainActivity : Activity() {
     override fun onBackPressed() {
         // The topmost layer only: the menu's own (a picker, a dialog, then the menu), then a setup preview.
         if (::settingsOverlay.isInitialized && settingsOverlay.isShowing) { settingsOverlay.back(); return }
+        if (::notificationOverlay.isInitialized && notificationOverlay.back()) return
         if (setupPreview) { closeSetupPreview(); return }
         page?.goBack()
     }
@@ -1040,6 +1102,9 @@ class MainActivity : Activity() {
 
     override fun onDestroy() {
         HaAuth.removeListener(authListener)
+        glassworks.notifications.removeListener(notificationListener)
+        glassworks.notifications.onOpenList = null
+        glassworks.notifications.onReveal = null
         HaAuth.threadJoin.removeListener(threadJoinListener)
         SetupSignals.removeListener(setupSignalListener)
         wifiStatus.observe(null)

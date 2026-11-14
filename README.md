@@ -90,6 +90,8 @@ A pane is a feature the panel can run or leave out. These are the panes today:
 - **Time zone**: the panel's time zone as an entity, kept across reboots.
 - **Diagnostics**: CPU, temperature, RAM, storage, Wi-Fi and uptime as entities.
 - **Bluetooth proxy**: the panel listens for Bluetooth devices and passes them to Home Assistant.
+- **Notifications**: Home Assistant's notifications over the dashboard, with a picture, buttons and a
+  sound, or a dashboard view full screen for a doorbell.
 
 Each frame's README rates the panes its `frame.json` lists. The [pane API](app/kiosk/src/main/java/dev/glassworks/README.md)
 says how to write one, and [What makes a pane](app/kiosk/src/main/java/dev/glassworks/README.md#what-makes-a-pane)

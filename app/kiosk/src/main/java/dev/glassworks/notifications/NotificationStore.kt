@@ -24,7 +24,9 @@ data class Delivery(
     val overNight: Boolean,
     /**
      * Seconds the card stays over the dashboard while the screen is on, before it folds into the list.
-     * Null: it stays until it is answered, dismissed, cleared or times out.
+     * Null: it stays until it is answered, dismissed, cleared or times out. A held one (Do not
+     * disturb) has none: it has no card until the person opens it from the list, and then it stays
+     * until they close it.
      */
     val foldAfterS: Int? = null,
 ) {
@@ -55,6 +57,12 @@ data class Delivery(
  * Thread-safe. [now] is in milliseconds (`SystemClock.elapsedRealtime` on the panel).
  */
 class NotificationStore(private val now: () -> Long, val max: Int = 20) {
+    /**
+     * Tests only: runs after each of [cards], [page] and [list] returns, never inside [snapshot]. A test
+     * changes the store from it, to prove a render reads one snapshot and not three separate lists.
+     */
+    internal var afterRead: ((String) -> Unit)? = null
+
 
     data class Entry(
         val id: Long,
@@ -102,6 +110,24 @@ class NotificationStore(private val now: () -> Long, val max: Int = 20) {
 
     @Synchronized
     fun dismiss(id: Long): Entry? = entries.firstOrNull { it.id == id }?.also { entries.remove(it) }
+
+    /**
+     * Do not disturb turned on: every entry it would have held now is held too, so its card and its
+     * page go to the list. Critical ones stay. True when something changed. (Turning it off holds
+     * nothing back out: the list keeps them, #118.)
+     */
+    @Synchronized
+    fun holdForDoNotDisturb(): Boolean {
+        var changed = false
+        for (i in entries.indices) {
+            val e = entries[i]
+            if (!e.held && Delivery.of(e.notification.priority, doNotDisturb = true).held) {
+                entries[i] = e.copy(held = true)
+                changed = true
+            }
+        }
+        return changed
+    }
 
     /** Shows a held entry (tapped in the list). A page takes the screen from any other page. */
     @Synchronized
@@ -152,17 +178,17 @@ class NotificationStore(private val now: () -> Long, val max: Int = 20) {
     data class Snapshot(val cards: List<Entry>, val page: Entry?, val list: List<Entry>)
 
     @Synchronized
-    fun snapshot(): Snapshot = Snapshot(cards(), page(), list())
+    fun snapshot(): Snapshot = Snapshot(cardsNow(), pageNow(), entries.toList())
 
     /** Every entry, newest first. */
-    @Synchronized
-    fun list(): List<Entry> = entries.toList()
+    fun list(): List<Entry> = synchronized(this) { entries.toList() }.also { afterRead?.invoke("list") }
 
     /** The full-screen page that is open, if any: the newest page that isn't held. */
-    @Synchronized
-    fun page(): Entry? = entries.firstOrNull { it.notification.url != null && !it.held }
+    fun page(): Entry? = synchronized(this) { pageNow() }.also { afterRead?.invoke("page") }
 
     /** The cards over the dashboard: entries that aren't held and aren't a page, newest first. */
-    @Synchronized
-    fun cards(): List<Entry> = entries.filter { !it.held && it.notification.url == null }
+    fun cards(): List<Entry> = synchronized(this) { cardsNow() }.also { afterRead?.invoke("cards") }
+
+    private fun pageNow() = entries.firstOrNull { it.notification.url != null && !it.held }
+    private fun cardsNow() = entries.filter { !it.held && it.notification.url == null }
 }

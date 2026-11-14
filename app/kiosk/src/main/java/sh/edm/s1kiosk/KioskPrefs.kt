@@ -6,10 +6,11 @@ import android.net.Uri
 import android.util.Base64
 import dev.glassworks.bluetoothproxy.BluetoothProxyPrefs
 import dev.glassworks.diagnostics.DiagnosticsPrefs
+import dev.glassworks.notifications.NotificationsPrefs
 import dev.glassworks.screen.ScreenSettings
+import sh.edm.esphome.NoiseKeyStore
 import sh.edm.s1kiosk.auth.OAuth
 import sh.edm.s1kiosk.auth.StoredAuth
-import sh.edm.esphome.NoiseKeyStore
 import sh.edm.s1kiosk.base.WallBasePrefs
 import sh.edm.s1kiosk.frame.TimeZonePrefs
 import sh.edm.s1kiosk.radio.RadioPrefs
@@ -38,6 +39,7 @@ class KioskPrefs(private val context: Context) : ScreenSettings {
     val timeZone = TimeZonePrefs(paneFile("time-zone"))
     val diagnostics = DiagnosticsPrefs(paneFile("diagnostics"))
     val bluetoothProxy = BluetoothProxyPrefs(paneFile("bluetooth-proxy"))
+    val notifications = NotificationsPrefs(paneFile("notifications"))
 
     fun registerListener(l: SharedPreferences.OnSharedPreferenceChangeListener) =
         sp.registerOnSharedPreferenceChangeListener(l)
@@ -266,7 +268,7 @@ class KioskPrefs(private val context: Context) : ScreenSettings {
          */
         val PANE_FILES = mapOf(
             "sendspin" to "kiosk", "assist" to "kiosk", "wall-base" to "kiosk", "radio" to "kiosk",
-            "time-zone" to "kiosk", "diagnostics" to "kiosk", "bluetooth-proxy" to "kiosk",
+            "time-zone" to "kiosk", "diagnostics" to "kiosk", "bluetooth-proxy" to "kiosk", "notifications" to "kiosk",
         )
 
         /** Decodes a base64 API key; null unless it is exactly 32 bytes. */
