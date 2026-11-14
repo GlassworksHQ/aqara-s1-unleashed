@@ -1,7 +1,7 @@
 package sh.edm.s1kiosk
 
 import android.app.Application
-import dev.glassworks.pane.NO_SETTINGS
+import dev.glassworks.pane.NOT_RUNNING
 import dev.glassworks.pane.SettingsItem
 import dev.glassworks.pane.paneSections
 import org.junit.Assert.assertEquals
@@ -28,9 +28,10 @@ class PaneSwitchesTest {
         val sections = paneSections(definitions)
         assertEquals(listOf("assist", "sendspin", "notifications", "radio", "bluetooth-proxy", "wall-base", "time-zone", "diagnostics"), sections.map { it.id })
         assertEquals(listOf("Voice", "Music", "Notifications", "Zigbee / Thread radio", "Bluetooth proxy", "Wall base", "Time zone", "Diagnostics"), sections.map { it.master?.title })
-        // The radio, notifications and the Bluetooth proxy have settings of their own; the others say so (#163's page).
-        val noSettings = sections.filter { s -> s.items.singleOrNull().let { it is SettingsItem.Note && it.text() == NO_SETTINGS } }
-        assertEquals(listOf("assist", "sendspin", "wall-base", "time-zone", "diagnostics"), noSettings.map { it.id })
+        // No device runs here: a page that shows the running pane says so (#212); the radio, the Bluetooth proxy
+        // and notifications (off by default, so its page is its off note) have their own.
+        val waiting = sections.filter { s -> s.items.singleOrNull().let { it is SettingsItem.Note && it.text() == NOT_RUNNING } }
+        assertEquals(listOf("assist", "sendspin", "wall-base", "time-zone", "diagnostics"), waiting.map { it.id })
     }
 
     @Test fun setupsPanesStepHasTheCardsOfTheDesign() {

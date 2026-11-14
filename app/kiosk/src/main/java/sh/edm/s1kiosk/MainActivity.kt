@@ -811,13 +811,26 @@ class MainActivity : Activity() {
      * core's sections and the panes', in the order every settings surface uses.
      */
     private fun showSettings() {
+        // Resolved once per opening: the model is made again on each refresh tick (#235 N4).
         val frame = glassworks.frame
+        deviceSettingsLink = if (frame.systemSettings(this) == null) null else SettingsItem.Link(SettingsMenu.AQARA_TITLE, SettingsMenu.AQARA_DETAIL) { c ->
+            if (!frame.openSystemSettings(c)) Toast.makeText(c, "No settings app on this panel", Toast.LENGTH_LONG).show()
+        }
+        settingsOverlay.reload = ::settingsModel
+        settingsOverlay.show(settingsModel())
+        handler.removeCallbacks(settingsTick)
+        handler.postDelayed(settingsTick, 500)
+    }
+
+    /** The device's own settings app, resolved when the menu opens ([showSettings]). */
+    private var deviceSettingsLink: SettingsItem.Link? = null
+
+    /** The menu's sections as they are now: each pane's page reads its running pane (#212). */
+    private fun settingsModel(): KioskSettingsOverlay.Model {
         val core = CoreSettings(
             prefs, BuildConfig.VERSION_NAME,
             status = { glassworks.screen.statusLine() + " · voice=" + glassworks.voiceState },
-            deviceSettings = if (frame.systemSettings(this) == null) null else SettingsItem.Link(SettingsMenu.AQARA_TITLE, SettingsMenu.AQARA_DETAIL) { c ->
-                if (!frame.openSystemSettings(c)) Toast.makeText(c, "No settings app on this panel", Toast.LENGTH_LONG).show()
-            },
+            deviceSettings = deviceSettingsLink,
             licences = SettingsItem.Link(CoreSettings.LICENCES_TITLE, CoreSettings.LICENCES_DETAIL) { Licences.show(this) },
             live = CoreSettings.Live(
                 fullScreen = ::pushConfig,
@@ -825,13 +838,8 @@ class MainActivity : Activity() {
                 brightness = { glassworks.screen.refreshBrightness() },
             ),
         )
-        // Each pane's section with its on/off at the top right; Voice and Music have only that for now.
-        val paneSections = paneSections(panes)
-        settingsOverlay.show(
-            KioskSettingsOverlay.Model(settingsOrder(core.sections(), paneSections), BuildConfig.VERSION_NAME, paneSections.map { it.id }.toSet()),
-        )
-        handler.removeCallbacks(settingsTick)
-        handler.postDelayed(settingsTick, 500)
+        val paneSections = paneSections(panes, glassworks::runningPane)
+        return KioskSettingsOverlay.Model(settingsOrder(core.sections(), paneSections), BuildConfig.VERSION_NAME, paneSections.map { it.id }.toSet())
     }
 
     private var restartWaitingSince = 0L

@@ -183,8 +183,11 @@ class PanelDevice internal constructor(
         HaAuth.removeListener(authListener)
         Dashboards.removeListener(dashboardsListener)
         // Panes first, while esphome-main still runs: the wall base's thread can still post to it.
-        val interrupted = panes.stopAll()
+        val gone = panes
+        val interrupted = gone.stopAll()
         panes = emptyList()
+        // A newer device may have published its own already.
+        if (runtime.panes === gone) runtime.panes = emptyList()
         assist = null
         exec.shutdownNow()
         mdns.stop()
@@ -305,6 +308,7 @@ class PanelDevice internal constructor(
         ) + frame.panes(paneContext, exec) + RadioPane(paneContext, runtime, panelIp = ::ipAddress) +
             runtime.paneDefinitions(ctx).filterIsInstance<BluetoothProxyDefinition>().map { it.pane(paneContext, exec) } +
             DiagnosticsPane(paneContext, frame.cpuThermalZone, runtime.engine::isContentProcess, exec)
+        runtime.panes = panes
         // Every pane's on/off, also while the pane is off.
         coreEntities = buildEntities() + switches.values.map { it.entity() }
         appliedDashboards = DashboardOptions.parse(prefs.dashboardsJson).orEmpty()
@@ -387,6 +391,7 @@ class PanelDevice internal constructor(
                 emit(PanelEvent.HomeAssistantSubscribed(addr, authenticated))
             }
         }
+        s.onTimeZone = { zone -> emit(PanelEvent.HomeAssistantTimeZone(zone)) }
         // A provisioned (or cleared) key changes the mDNS TXT records; re-register after the
         // unregistration has gone out so the name doesn't collide with our own old record.
         s.onKeyActivated = { exec.execute { readvertise() } }

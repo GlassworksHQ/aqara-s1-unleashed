@@ -6,6 +6,9 @@ package dev.glassworks.pane
 
 import android.content.Context
 import android.view.View
+import sh.edm.esphome.ApiEntity
+import sh.edm.esphome.ButtonEntity
+import sh.edm.esphome.EventEntity
 
 /**
  * One section of the panel's settings. The panel's settings menu draws it, and the Manage page (#33)
@@ -25,21 +28,39 @@ class SettingsSection(
      * pane's setup card ([PaneChoice]) unless the pane gives its own (the radio asks before turning off).
      */
     val master: SettingsItem.Switch? = null,
-    /** The dot by its name in the nav: how the pane is doing now, or null for none. */
-    val status: () -> SettingsStatus? = { null },
+    /**
+     * How the pane is doing now, in its own words (the radio's role, Voice's wake word), or null when it
+     * has none: [paneState] then says On or Off from its [master]. The chip after its name in the panel's
+     * rail and on the Manage page (#243).
+     */
+    val status: () -> PaneState? = { null },
     /** Why the pane can't run here, or null: the nav greys it and the page says why. */
     val unavailable: () -> String? = { null },
+    /**
+     * What its items read, when that can be replaced while the menu is open: a pane's running [Pane],
+     * which the shell builds again when the device restarts. Another one draws the page again.
+     */
+    val source: Any? = null,
+    /**
+     * The object ids of the pane's entities this page already covers: it shows them, or leaves them out
+     * on purpose. Set, and the core ends the page with "In Home Assistant" for the pane's other
+     * entities, or adds nothing when none is left, so no entity is listed twice (#212). Null (the
+     * default): the core adds nothing to this page.
+     */
+    val covers: Set<String>? = null,
 )
 
-/** A section's dot in the nav. Status colours mean status only: green, amber, rose. */
-enum class SettingsStatus { OK, WORKING, PROBLEM }
 
 /**
- * The panes' sections as every settings surface shows them (#63, #33, #67): each pane's own, with its
- * on/off as the section's [SettingsSection.master] when it has none: its setup card, else its
- * [PaneDefinition.switch]. A pane with an on/off but no section gets one that says so. Definition order.
+ * The panes' sections as every settings surface shows them (#63, #33, #67, #212): each pane's own, with
+ * its on/off as the section's [SettingsSection.master] when it has none: its setup card, else its
+ * [PaneDefinition.switch]. [running] gives the pane the shell built, or null while the panel's device
+ * isn't running. A pane with no section of its own gets one with its entities ([inHomeAssistant]). A
+ * page of its own that says what it covers ([SettingsSection.covers]) ends with the pane's other
+ * entities. A pane whose [PaneDefinition.switch] is off shows what that means ([PaneSwitch.offNote])
+ * and its entities, unavailable. Definition order.
  */
-fun paneSections(definitions: List<PaneDefinition>): List<SettingsSection> = definitions.flatMap { d ->
+fun paneSections(definitions: List<PaneDefinition>, running: (String) -> Pane? = { null }): List<SettingsSection> = definitions.flatMap { d ->
     val choice = d.setupChoice ?: d.switch?.choice()
     val master = choice?.let { c ->
         // The card's apply can wait on the device (the radio): off the main thread.
@@ -47,21 +68,53 @@ fun paneSections(definitions: List<PaneDefinition>): List<SettingsSection> = def
             Thread({ done(runCatching { c.apply(on) }.getOrElse { it.message ?: "It didn't work." }) }, "gw-pane-switch").apply { isDaemon = true; start() }
         }
     }
-    val own = d.settings()
+    val pane = running(d.id)
+    val off = d.switch?.takeIf { !it.on }
+    val own = if (off != null) emptyList() else d.settings(pane)
     when {
-        own.isNotEmpty() -> own.mapIndexed { i, s ->
-            if (i > 0 || s.master != null || master == null) s
-            else SettingsSection(s.id, s.title, s.items, s.heading, master, s.status, s.unavailable)
+        own.isNotEmpty() -> {
+            // The pane's entities no page covers, once, at the end of the first page that takes part.
+            val covered = own.mapNotNull { it.covers }.flatten().toSet()
+            val rest = inHomeAssistant(pane) { it.objectId !in covered }
+            val first = own.indexOfFirst { it.covers != null }
+            own.mapIndexed { i, s ->
+                SettingsSection(
+                    s.id, s.title, if (i == first && rest != null) s.items + rest else s.items, s.heading,
+                    if (i > 0 || s.master != null) s.master else master, s.status, s.unavailable, source = pane, covers = s.covers,
+                )
+            }
         }
         choice != null -> listOf(SettingsSection(
-            d.id, choice.title, listOf(SettingsItem.Note { NO_SETTINGS }), master = master,
+            d.id, choice.title,
+            listOfNotNull(off?.let { s -> SettingsItem.Note { s.offNote } }, inHomeAssistant(pane, on = off == null))
+                .ifEmpty { listOf(SettingsItem.Note { NOT_RUNNING }) },
+            master = master, source = pane,
         ))
         else -> emptyList()
     }
 }
 
-/** The page of a pane with no settings of its own (#33's words). */
-const val NO_SETTINGS = "This pane has no settings of its own yet. Its entities are in Home Assistant."
+/**
+ * The "In Home Assistant" list of [pane]'s entities (#212): each one's name and its state as Home
+ * Assistant shows it, `Unavailable` while the pane is off ([on] false). Buttons and events have no
+ * state and are left out. Null when the pane isn't built or has no such entity.
+ */
+fun inHomeAssistant(pane: Pane?, on: Boolean = true, only: (ApiEntity) -> Boolean = { true }): SettingsItem.States? {
+    if (pane == null) return null
+    // Read again with the rows: a pane's list can change while the page is open (a wall base mounted).
+    fun shown() = pane.entities().filter { it !is ButtonEntity && it !is EventEntity && only(it) }
+    if (shown().isEmpty()) return null
+    return SettingsItem.States(IN_HOME_ASSISTANT, rows = {
+        shown().map { e -> SettingsItem.StateRow(e.name, if (on) e.shownState() ?: UNKNOWN else UNAVAILABLE, e.disabledByDefault) }
+    })
+}
+
+const val IN_HOME_ASSISTANT = "In Home Assistant"
+/** A pane's page while the panel's Home Assistant device isn't running, so its entities can't be read. */
+const val NOT_RUNNING = "The panel's Home Assistant device isn't running yet. Its state shows here once it is."
+/** Home Assistant's words for an entity with no state now, and for one whose device can't give it. */
+const val UNKNOWN = "Unknown"
+const val UNAVAILABLE = "Unavailable"
 
 /** Where a settings section sits. The core's own come first and last; panes go in between. */
 enum class SettingsPlace { DASHBOARD, SCREEN, NETWORK, PANES, LOG, SECURITY, ABOUT }
@@ -154,11 +207,50 @@ sealed interface SettingsItem {
     /** A line of status text. */
     class Note(val text: () -> String) : SettingsItem
 
-    /** A name and a status line under it (the app's version). */
+    /** A name and a status line under it (the app's version, what plays now). Read again while the page is open. */
     class Info(val title: () -> String, val detail: () -> String) : SettingsItem
 
     /** Items under their own heading, in a card of their own. */
     class Group(val title: String, val items: List<SettingsItem>) : SettingsItem
+
+    /**
+     * One of a few [options] (id to its name), picked from a list, never typed (the wake word). The row
+     * shows the picked one's name.
+     */
+    class Choice(
+        val title: String,
+        val value: () -> String,
+        val options: () -> List<Pair<String, String>>,
+        val save: (String, done: (String?) -> Unit) -> Unit,
+    ) : SettingsItem
+
+    /**
+     * Read-only states under [title], one line each: a name on the left, its value on the right
+     * ([inHomeAssistant]). [rows] is read again every couple of seconds while the page is open. A row
+     * [StateRow.offByDefault] is dimmed, with a line under the list that says why.
+     */
+    class States(val title: String, val rows: () -> List<StateRow>) : SettingsItem
+
+    class StateRow(val name: String, val value: String, val offByDefault: Boolean = false)
+
+    /** A line under the page's heading that says how the pane is doing now. [ok]: it works (green), else quiet grey. Read again while open. */
+    class Status(val text: () -> String, val ok: () -> Boolean) : SettingsItem
+
+    /** Readings as tiles, [columns] to a row (the diagnostics' six, the wall base's strip). Read again while the page is open. */
+    class Tiles(val columns: Int, val tiles: () -> List<Tile>) : SettingsItem
+
+    /**
+     * One reading: its [name], the [value] large with its [unit], a [detail] line, and under it either its
+     * last hour ([history], oldest first: a line) or how full it is ([meter], 0 to 1).
+     */
+    class Tile(
+        val name: String,
+        val value: String,
+        val unit: String = "",
+        val detail: String = "",
+        val history: List<Float>? = null,
+        val meter: Float? = null,
+    )
 
     /**
      * A view only the panel draws, for what has no typed item yet. [key] names it: the menu makes it

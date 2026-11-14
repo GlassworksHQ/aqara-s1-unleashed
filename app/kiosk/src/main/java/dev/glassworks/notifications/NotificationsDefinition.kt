@@ -28,6 +28,8 @@ class NotificationsDefinition(
     override val switch = PaneSwitch(
         file, NotificationsPrefs.KEY_ENABLED, default = false, title = "Notifications", detail = "On-screen alerts",
         objectId = "notifications", entityName = "Notifications", icon = "mdi:bell-outline", inSetup = true,
+        // The core shows this on the page while the pane is off (#212), then the pane's entities.
+        offNote = offNote(actionName),
     )
 
     override fun settings(): List<SettingsSection> = listOf(
@@ -51,12 +53,7 @@ class NotificationsDefinition(
         )
     }
 
-    private fun offItems(): List<SettingsItem> = listOf(
-        SettingsItem.Note {
-            "Notifications are off. $actionName stays in Home Assistant and answers “Notifications are off on this panel” until you turn them on."
-        },
-        inHomeAssistant(),
-    )
+    private fun offItems(): List<SettingsItem> = listOf(SettingsItem.Note { offNote(actionName) }, inHomeAssistant())
 
     private fun inHomeAssistant() = SettingsItem.Group("In Home Assistant", listOf(
         SettingsItem.Info({ "Do not disturb" }, { if (prefs.doNotDisturb) "On" else "Off" }),
@@ -80,6 +77,10 @@ class NotificationsDefinition(
     private fun listLine(s: NotificationsHub.State) = if (s.list.isEmpty()) "None now" else "${s.list.size} · open the list"
 
     companion object {
+        /** What being off means: the action stays, and says so (#67 keeps an off pane's entities). */
+        fun offNote(actionName: String) =
+            "Notifications are off. $actionName stays in Home Assistant and answers “Notifications are off on this panel” until you turn them on."
+
         /** "now", "2 min ago", "3 h ago". */
         fun ago(ms: Long): String = when {
             ms < 60_000 -> "now"

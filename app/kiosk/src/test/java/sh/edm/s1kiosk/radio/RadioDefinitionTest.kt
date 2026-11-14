@@ -182,11 +182,30 @@ class RadioDefinitionTest {
         // CodeRabbit on #163: the helper says ok while its router host fails; the card said Error, the nav green.
         fun status(mode: RadioMode, text: String) = radioDefinition(app, FixedReadout(
             RadioFollowUp.Facts(mode, text, HelperFacts(true, 4), ZigbeeStack.AQARA, null, null, "http://homeassistant.local:8123", "192.0.2.10"),
-        )).settings().single().status()
-        assertEquals(dev.glassworks.pane.SettingsStatus.PROBLEM, status(RadioMode.ZIGBEE_ROUTER, "ok Zigbee router (repeater): router host error: no answer"))
-        assertEquals(dev.glassworks.pane.SettingsStatus.OK, status(RadioMode.ZIGBEE_TCP, "ok Zigbee coordinator (TCP): listening on :6638"))
-        assertEquals(dev.glassworks.pane.SettingsStatus.WORKING, status(RadioMode.ZIGBEE_TCP, "applying Zigbee coordinator (TCP)…"))
+        )).settings().single().status()?.kind
+        // #243: the chip says Problem or Running, as on the Manage page; Off is the switch's.
+        assertEquals(dev.glassworks.pane.PaneState.Kind.PROBLEM, status(RadioMode.ZIGBEE_ROUTER, "ok Zigbee router (repeater): router host error: no answer"))
+        assertEquals(dev.glassworks.pane.PaneState.Kind.RUNNING, status(RadioMode.ZIGBEE_TCP, "ok Zigbee coordinator (TCP): listening on :6638"))
+        assertEquals(dev.glassworks.pane.PaneState.Kind.RUNNING, status(RadioMode.ZIGBEE_TCP, "applying Zigbee coordinator (TCP)…"))
         assertEquals(null, status(RadioMode.OFF, "ok Off: Aqara radio services stopped"))
+    }
+
+    @Test
+    fun theRadiosFirmwareAndHelperAreOnItsPageButNotWhoIsConnected() {
+        // #212: "Connected now" waits for the root helper to report the live peer (#217).
+        val pane = object : dev.glassworks.pane.Pane {
+            override val id = "radio"
+            override fun entities() = listOf(
+                sh.edm.esphome.TextSensorEntity("radio_firmware", "Radio firmware", get = { "EmberZNet 7.4.4 · EZSP v13" }),
+                sh.edm.esphome.TextSensorEntity("radio_helper", "Radio helper", get = { "v4 · root side ready" }),
+            )
+        }
+        val d = radioDefinition(app, FixedReadout(null, running = false))
+        val block = d.settings(pane).single().items.last() as dev.glassworks.pane.SettingsItem.Group
+        assertEquals("The radio", block.title)
+        assertEquals(listOf("Firmware" to "EmberZNet 7.4.4 · EZSP v13", "Radio helper" to "v4 · root side ready"),
+            block.items.map { (it as dev.glassworks.pane.SettingsItem.Info).let { i -> i.title() to i.detail() } })
+        assertEquals("no pane, no block", d.settings().single().items.size, d.settings(null).single().items.size)
     }
 
     @Test

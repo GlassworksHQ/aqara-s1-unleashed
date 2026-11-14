@@ -4,7 +4,7 @@ import dev.glassworks.manage.ManageFixture
 import dev.glassworks.manage.text
 import dev.glassworks.manage.LogEntry
 import dev.glassworks.manage.PaneRow
-import dev.glassworks.pane.NO_SETTINGS
+import dev.glassworks.pane.NOT_RUNNING
 import dev.glassworks.pane.PaneState
 import dev.glassworks.pane.SettingsItem
 import dev.glassworks.pane.SettingsSection
@@ -99,7 +99,7 @@ class ManagePageMockups {
                 PaneRow("time-zone", "Time zone", PaneState(PaneState.Kind.RUNNING, "Keeps the zone Aqara resets at boot", "On"), "time-zone"),
                 PaneRow("diagnostics", "Diagnostics", PaneState(PaneState.Kind.RUNNING, "CPU, temperature, memory and Wi-Fi in Home Assistant", "On"), "diagnostics"),
             ),
-            sections = f.status.sections + SettingsSection("time-zone", "Time zone", listOf(SettingsItem.Note { NO_SETTINGS }), master = on),
+            sections = f.status.sections + SettingsSection("time-zone", "Time zone", listOf(SettingsItem.Note { NOT_RUNNING }), master = on),
         )
         save("11-overview-panes-on-off", b.get("/"))
         save("11b-pane-off", b.get("/sendspin"))
