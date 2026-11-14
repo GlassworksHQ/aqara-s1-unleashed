@@ -196,11 +196,12 @@ class SendspinPlayer(
     private val outputLock = Any()
     @Volatile private var ducked = false
     private val wake = Object()
-    @Volatile var status: SendspinSession.Status = SendspinSession.Status(SendspinSession.Phase.CLOSED); private set
+    // Set internally by tests and the settings mock-ups too.
+    @Volatile var status: SendspinSession.Status = SendspinSession.Status(SendspinSession.Phase.CLOSED); internal set
     /** True once the client has started since boot (ESPHome reports the client id only then). */
     @Volatile var started = false; private set
-    @Volatile private var lastUrl: String? = null
-    @Volatile private var nowPlaying: String? = null
+    @Volatile internal var lastUrl: String? = null
+    @Volatile internal var nowPlaying: String? = null
     /** Why FLAC is no longer offered this run (decoder failures), or null. */
     @Volatile private var flacFailure: String? = null
     /** The platform's FLAC decoder, or null if there is none (then only PCM is offered). */
@@ -580,6 +581,10 @@ class SendspinPlayer(
     fun setVolume(volume: Int) { store.volume = volume.coerceIn(0, 100); applyGain(); session?.sendState() }
     fun setMuted(muted: Boolean) { store.muted = muted; applyGain(); session?.sendState() }
     val volume: Int get() = store.volume
+    /** What plays now (`artist – title`), or null; for the settings page (#212). */
+    val nowPlayingText: String? get() = nowPlaying
+    /** The server it is connected to, or last was. */
+    val serverUrl: String? get() = lastUrl
     val muted: Boolean get() = store.muted
     /** Tests: whether the current run's scheduler is playing a stream. */
     internal val outputActive: Boolean get() = current?.scheduler?.isActive == true

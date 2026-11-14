@@ -2,8 +2,13 @@ package sh.edm.s1kiosk.sendspin
 
 import android.content.SharedPreferences
 import dev.glassworks.pane.IntentExtra
+import dev.glassworks.pane.Pane
 import dev.glassworks.pane.PaneDefinition
 import dev.glassworks.pane.PaneSwitch
+import dev.glassworks.pane.SettingsItem
+import dev.glassworks.pane.SettingsSection
+import dev.glassworks.pane.inHomeAssistant
+import java.net.URI
 
 /** The Sendspin player ([SendspinPane]) for the whole process: its on/off and adb extras (app/README.md). [file] is its settings file. */
 class SendspinDefinition(file: SharedPreferences) : PaneDefinition {
@@ -16,7 +21,42 @@ class SendspinDefinition(file: SharedPreferences) : PaneDefinition {
         file, SendspinPrefs.KEY_ENABLED, default = true, title = "Music", detail = "A Sendspin speaker",
         objectId = "sendspin", entityName = "Music Assistant player (Sendspin)", icon = "mdi:speaker-wireless",
         inSetup = true,
+        offNote = "Music is off. Music Assistant doesn't see this panel as a speaker until you turn it on.",
     )
+
+    /** The Music Assistant connection, what plays, its volume and the stream's format (#212). */
+    override fun settings(running: Pane?): List<SettingsSection> {
+        val p = running as? SendspinPane ?: return emptyList()
+        val player = p.player
+        return listOf(SettingsSection(id, "Music", listOfNotNull(
+            SettingsItem.Status(text = { status(player.status, player.serverUrl) }, ok = { connected(player.status.phase) }),
+            SettingsItem.Info({ "Now playing" }, { player.nowPlayingText ?: "Nothing" }),
+            SettingsItem.Slider("Volume", { player.volume.toFloat() }, 0f, 100f, 1f, { "${it.toInt()} %" }) { v, done -> player.setVolume(v.toInt()); done(null) },
+            SettingsItem.Info({ "Audio" }, { audio(player.status) }),
+            inHomeAssistant(p),
+        )))
+    }
+
+    companion object {
+        private fun connected(phase: SendspinSession.Phase) = phase == SendspinSession.Phase.READY || phase == SendspinSession.Phase.PLAYING
+
+        /** The line under the heading: how the player is connected, and to where. */
+        fun status(s: SendspinSession.Status, url: String?): String {
+            val name = s.serverName ?: "Music Assistant"
+            val host = url?.let { runCatching { URI(it).host }.getOrNull() }
+            return when (s.phase) {
+                SendspinSession.Phase.READY, SendspinSession.Phase.PLAYING -> "Connected to $name" + (host?.let { " · $it" } ?: "")
+                SendspinSession.Phase.CONNECTING, SendspinSession.Phase.HANDSHAKE -> "Connecting to Music Assistant"
+                SendspinSession.Phase.HELD -> "Waiting for $name to let the panel in"
+                SendspinSession.Phase.PAIRING -> "Pairing with $name"
+                SendspinSession.Phase.CLOSED -> "Not connected to Music Assistant"
+            }
+        }
+
+        /** The stream's format. The player offers only 48 kHz stereo, so the server sends that: the codec is the choice. */
+        fun audio(s: SendspinSession.Status): String =
+            if (s.phase != SendspinSession.Phase.PLAYING || s.codec == null) "Not playing" else "${s.codec.uppercase()} · 48 kHz · stereo"
+    }
 
     override val extras = listOf(
         IntentExtra.string("sendspin_server") { prefs.server = it },

@@ -365,10 +365,35 @@ class KioskSettingsOverlay(context: Context) : FrameLayout(context) {
         is SettingsItem.TimeRange -> row(i.title, i.shown(i.value()), chevron = true, dim = false) { sheet.range(i) { build() } }
         is SettingsItem.Link -> row(i.title, i.detail, chevron = true, dim = i.detail.isEmpty()) { i.open(context) }
         is SettingsItem.Note -> g.text(14.5f, MU).apply { text = i.text(); setLineSpacing(0f, 1.25f); setPadding(0, px(14f), 0, px(14f)) }
-        is SettingsItem.Info -> row(i.title(), i.detail(), chevron = false, dim = false, onClick = null)
+        is SettingsItem.Info -> infoRow(i)
         is SettingsItem.Choice -> row(i.title, choiceName(i), chevron = true, dim = false) { sheet.choice(i) { build() } }
         is SettingsItem.Group, is SettingsItem.States, is SettingsItem.Status, is SettingsItem.Tiles -> error("laid out by addItems")
         is SettingsItem.Native -> natives.getOrPut(i.key) { i.create(nativeHost) }.also { it.refresh() }.view
+    }
+
+    /** A name and a status line under it, read again on [refresh] (#212: what plays now). */
+    private fun infoRow(i: SettingsItem.Info): View {
+        val name = g.text(16.5f, TX)
+        val value = g.text(15f, MU).apply { setLineSpacing(0f, 1.15f) }
+        fun bind() {
+            name.text = i.title()
+            val v = i.detail()
+            if (value.text != v) value.text = v
+            value.visibility = if (v.isEmpty()) View.GONE else View.VISIBLE
+        }
+        bind()
+        live += ::bind
+        return LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            minimumHeight = px(64f)
+            setPadding(0, px(12f), 0, px(12f))
+            addView(LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                addView(name)
+                addView(value, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(6f) })
+            }, LinearLayout.LayoutParams(0, -2, 1f).apply { marginEnd = px(16f) })
+        }
     }
 
     private fun choiceName(i: SettingsItem.Choice): String { val v = i.value(); return i.options().firstOrNull { it.first == v }?.second ?: v }

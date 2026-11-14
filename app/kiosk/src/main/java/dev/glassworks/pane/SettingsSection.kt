@@ -177,7 +177,7 @@ sealed interface SettingsItem {
     /** A line of status text. */
     class Note(val text: () -> String) : SettingsItem
 
-    /** A name and a status line under it (the app's version). */
+    /** A name and a status line under it (the app's version, what plays now). Read again while the page is open. */
     class Info(val title: () -> String, val detail: () -> String) : SettingsItem
 
     /** Items under their own heading, in a card of their own. */

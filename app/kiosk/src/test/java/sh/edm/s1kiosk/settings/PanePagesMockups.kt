@@ -32,6 +32,8 @@ import sh.edm.s1kiosk.frame.TimeZoneView
 import sh.edm.s1kiosk.radio.SysProps
 import dev.glassworks.pane.PanelEvent
 import dev.glassworks.pane.PanelTimer
+import sh.edm.s1kiosk.sendspin.SendspinPane
+import sh.edm.s1kiosk.sendspin.SendspinSession
 import sh.edm.s1kiosk.esphome.UrlPlayer
 import sh.edm.s1kiosk.voice.AssistPane
 import sh.edm.s1kiosk.voice.SpeakerMedia
@@ -140,6 +142,16 @@ class PanePagesMockups {
         return p
     }
 
+    /** Playing a public-domain piece from Music Assistant at 192.0.2.30. */
+    private fun music(): SendspinPane {
+        val p = SendspinPane(ctx, haBase = { "http://homeassistant.local:8123" })
+        p.player.setVolume(40)
+        p.player.status = SendspinSession.Status(SendspinSession.Phase.PLAYING, serverName = "Music Assistant", paired = true, codec = "flac")
+        p.player.lastUrl = "ws://192.0.2.30:8927/sendspin"
+        p.player.nowPlaying = "Claude Debussy – Clair de lune"
+        return p
+    }
+
     private fun menu(running: List<Pane>): KioskSettingsOverlay {
         val o = Mockup.show(KioskSettingsOverlay(Mockup.activity()))
         KioskPrefs(app).apply { urlSetting = "http://homeassistant.local:8123/lovelace/panel" }
@@ -172,6 +184,7 @@ class PanePagesMockups {
             Mockup.layout(o)
             o.previewScrollTo(Mockup.label(o, "Timers running"), alignBottom = true)
         }
+        shot("212-10-music", menu(listOf(music())), "sendspin")
         val tz = timeZone()
         shot("212-04-time-zone", menu(listOf(tz)), "time-zone")
         shot("212-05-time-zone-picker", menu(listOf(tz)), "time-zone") { o ->
