@@ -70,10 +70,10 @@ permissions; the manifest entries come with the library.
 
 | | |
 |---|---|
-| `BluetoothProxyEngine` | The proxy. Scans only while a client is subscribed to advertisements, batches up to 16 per message or for 200 ms (as ESPHome does on Wi-Fi), and reports a `ProxyStatus`. Runs on one thread of its own. |
+| `BluetoothProxyEngine` | The proxy. Scans only while a client is subscribed to advertisements, batches up to 16 per message or for 200 ms (as ESPHome does on Wi-Fi), and reports a `ProxyStatus`: advertisements and different devices in the last full minute, the last hour's counts, and when the next try is after a failure. Runs on one thread of its own. |
 | `ScanSchedule` (internal) | When to start, stop and restart the one scan. Pure Kotlin, time passed in. |
 | `BleScanner`, `ScanPower`, `ScanFailure` | The scanner seam. Tests use a fake. |
-| `AndroidBleScanner` | `BluetoothLeScanner`, with one empty `ScanFilter` (see below). |
+| `AndroidBleScanner` | `BluetoothLeScanner`, with one empty `ScanFilter` (see below). `turnBluetoothOn()` for a "Turn on Bluetooth" button (apps may up to Android 12). |
 
 ## Android's scan rules
 

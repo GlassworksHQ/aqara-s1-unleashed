@@ -184,6 +184,31 @@ class BluetoothProxyEngineTest {
         assertEquals(0, engine.status.advertisementsPerMinute)
     }
 
+    @Test fun theLastMinuteCountsDifferentDevicesAndTheLastHourKeepsEachMinute() {
+        subscribe(true)
+        repeat(30) { scanner.hear(it % 3) } // 30 advertisements from 3 devices
+        loop.advanceBy(60_000)
+        val s = engine.status
+        assertEquals(30, s.advertisementsPerMinute)
+        assertEquals(3, s.devicesPerMinute)
+        loop.advanceBy(2 * 60_000L)
+        assertEquals("one line point per minute, quiet ones as 0", listOf(30, 0, 0), engine.status.lastHour)
+        loop.advanceBy(90 * 60_000L)
+        assertEquals("an hour at most", 60, engine.status.lastHour.size)
+    }
+
+    @Test fun aFailureSaysWhenTheNextTryIs() {
+        subscribe(true)
+        scanner.running = false
+        scanner.listener!!.onFailed(ScanFailure.ANDROID_ERROR)
+        loop.advanceBy(0)
+        assertEquals(30_000L, engine.status.retryInMs)
+        loop.advanceBy(10_000)
+        assertEquals(20_000L, engine.status.retryInMs)
+        loop.advanceBy(20_000)
+        assertNull("scanning again", engine.status.retryInMs)
+    }
+
     @Test fun closeStopsTheScan() {
         subscribe(true)
         engine.close()
