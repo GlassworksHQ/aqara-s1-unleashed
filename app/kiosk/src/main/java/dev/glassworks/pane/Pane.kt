@@ -36,6 +36,12 @@ interface PanelEvent {
      * Assistant, so a pane that trusts the address checks it.
      */
     data class HomeAssistantSubscribed(val address: InetAddress?, val authenticated: Boolean) : PanelEvent
+
+    /**
+     * Home Assistant's own time zone, an IANA id like `Europe/Madrid`, from its answer to the panel's
+     * time request on an authenticated connection.
+     */
+    data class HomeAssistantTimeZone(val zone: String) : PanelEvent
 }
 
 /** One voice timer as Home Assistant reports it. */

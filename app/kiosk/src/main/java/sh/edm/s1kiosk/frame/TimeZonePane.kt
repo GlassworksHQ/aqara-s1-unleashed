@@ -15,7 +15,7 @@ import sh.edm.esphome.TextSensorEntity
  * for when it is turned on.
  */
 class TimeZonePane(
-    ctx: PaneContext,
+    private val ctx: PaneContext,
     private val prefs: TimeZonePrefs,
     private val keeper: TimeZoneKeeper = TimeZoneKeeper(onChange = ctx.publishStates),
 ) : Pane {
@@ -36,6 +36,19 @@ class TimeZonePane(
 
     override fun entities(): List<ApiEntity> = entities
 
+    /** Home Assistant's own zone, once it answered the panel's time request; null until then. For the settings page (#212). */
+    @Volatile var homeAssistantZone: String? = null
+        private set
+
+    /** The zone the panel keeps, "" for none. */
+    val kept: String get() = keeper.text()
+
+    /** How keeping it goes ([TimeZoneKeeper.statusText]). */
+    val status: String get() = keeper.statusText()
+
+    /** Keeps [zone], as Home Assistant's `time_zone` does: null, or why not. */
+    fun keep(zone: String): String? = keeper.set(zone).also { ctx.publishStates() }
+
     override fun start() {
         // Turned on again: the zone it kept when it was turned off (or none).
         keeper.keepAgain(prefs.kept)
@@ -46,6 +59,7 @@ class TimeZonePane(
     override fun stop() = keeper.stop()
 
     override fun onEvent(event: PanelEvent) {
+        if (event is PanelEvent.HomeAssistantTimeZone) homeAssistantZone = event.zone
         // The core has stopped the pane already; stop() alone also runs when the app stops, which keeps the zone.
         if (event is PanelEvent.SettingChanged && event.key == TimeZonePrefs.KEY_ENABLED && !prefs.enabled) {
             keeper.release().takeIf { it.isNotEmpty() }?.let { prefs.kept = it }

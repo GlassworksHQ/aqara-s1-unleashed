@@ -364,6 +364,7 @@ class PanelDevice internal constructor(
                 emit(PanelEvent.HomeAssistantSubscribed(addr, authenticated))
             }
         }
+        s.onTimeZone = { zone -> emit(PanelEvent.HomeAssistantTimeZone(zone)) }
         // A provisioned (or cleared) key changes the mDNS TXT records; re-register after the
         // unregistration has gone out so the name doesn't collide with our own old record.
         s.onKeyActivated = { exec.execute { readvertise() } }

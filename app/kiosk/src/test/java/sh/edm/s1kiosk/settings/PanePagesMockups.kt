@@ -25,6 +25,13 @@ import sh.edm.s1kiosk.base.WallBase
 import sh.edm.s1kiosk.base.WallBasePane
 import sh.edm.s1kiosk.frame.AqaraCloud
 import sh.edm.s1kiosk.frame.AqaraS1Plus
+import sh.edm.s1kiosk.frame.TimeZoneKeeper
+import sh.edm.s1kiosk.frame.TimeZonePane
+import sh.edm.s1kiosk.frame.TimeZonePrefs
+import sh.edm.s1kiosk.frame.TimeZoneView
+import sh.edm.s1kiosk.radio.SysProps
+import dev.glassworks.pane.PanelEvent
+import java.util.TimeZone
 import sh.edm.s1kiosk.radio.FixedReadout
 import sh.edm.s1kiosk.radio.HelperFacts
 import sh.edm.s1kiosk.radio.ui.RadioFollowUp
@@ -102,6 +109,20 @@ class PanePagesMockups {
         return p
     }
 
+    /** Europe/Madrid, kept by the root helper, and Home Assistant's the same. */
+    private fun timeZone(): TimeZonePane {
+        TimeZone.setDefault(TimeZone.getTimeZone("Europe/Madrid"))
+        val props = object : SysProps {
+            val values = mutableMapOf(TimeZoneKeeper.PROP to "Europe/Madrid", TimeZoneKeeper.PROP_STATUS to "ok Europe/Madrid")
+            override fun get(name: String) = values[name].orEmpty()
+            override fun set(name: String, value: String) { values[name] = value }
+        }
+        val p = TimeZonePane(ctx, TimeZonePrefs(KioskPrefs(app).paneFile("time-zone")), TimeZoneKeeper(props, inline = true))
+        p.start()
+        p.onEvent(PanelEvent.HomeAssistantTimeZone("Europe/Madrid"))
+        return p
+    }
+
     private fun menu(running: List<Pane>): KioskSettingsOverlay {
         val o = Mockup.show(KioskSettingsOverlay(Mockup.activity()))
         KioskPrefs(app).apply { urlSetting = "http://homeassistant.local:8123/lovelace/panel" }
@@ -129,5 +150,10 @@ class PanePagesMockups {
         shot("212-01-diagnostics", menu(listOf(diagnostics())), "diagnostics")
         shot("212-02-wall-base", menu(listOf(wallBase())), "wall-base")
         shot("212-03-wall-base-none", menu(listOf(wallBase(attached = false))), "wall-base")
+        val tz = timeZone()
+        shot("212-04-time-zone", menu(listOf(tz)), "time-zone")
+        shot("212-05-time-zone-picker", menu(listOf(tz)), "time-zone") { o ->
+            (o.previewNative("time-zone-${System.identityHashCode(tz)}") as TimeZoneView).open()
+        }
     }
 }
